@@ -24,7 +24,7 @@ const stateDir=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'Code
 await fs.mkdir(stateDir,{recursive:true});
 let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;
 function warm(){if(warming||Date.now()-warmAt<10000)return;warming=true;warmAt=Date.now();store.prewarm().catch(()=>{}).finally(()=>{warming=false;});}
-async function state(value){const tmp=path.join(stateDir,`status-${process.pid}.tmp`);await fs.writeFile(tmp,JSON.stringify({version:'1.5.0',pid:process.pid,port,updatedAt:new Date().toISOString(),...value}));await fs.rename(tmp,path.join(stateDir,'status.json'));}
+async function state(value){const tmp=path.join(stateDir,`status-${process.pid}.tmp`);await fs.writeFile(tmp,JSON.stringify({version:'1.5.1',pid:process.pid,port,updatedAt:new Date().toISOString(),...value}));await fs.rename(tmp,path.join(stateDir,'status.json'));}
 async function tick(){
   refreshGlobal();
   warm();
@@ -36,7 +36,7 @@ async function tick(){
     try{
       if(!c){c=await new CDP(target).open();connections.set(target.id,c);}
       const cached=[...store.reports.values()].map(data=>({...data,quota,activity:usage.view}));
-      await c.evaluate(`if(window.__BOSS_CONTEXT_PANEL__?.version!=='1.5.0')window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(cached)};\n${widget}`);
+      await c.evaluate(`if(window.__BOSS_CONTEXT_PANEL__?.version!=='1.5.1')window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(cached)};\n${widget}`);
       const threadId=await c.evaluate('window.__BOSS_CONTEXT_PANEL__?.select()||null');
       const data={...await store.get(threadId),quota,activity:usage.view};
       const batch=[...cached.filter(d=>d.threadId!==threadId),data];

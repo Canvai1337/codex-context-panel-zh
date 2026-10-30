@@ -2,7 +2,7 @@
 
 在 Windows 版 Codex 输入框上方显示上下文用量、已用 Token、5 小时剩余额度，以及本机今日／本周 Token。
 
-**非官方社区小工具，与 OpenAI 无隶属关系。当前版本：1.5.0。**
+**非官方社区小工具，与 OpenAI 无隶属关系。当前版本：1.5.1。**
 
 ![收起状态栏，模拟数据](assets/collapsed.png)
 
@@ -25,7 +25,7 @@
 适用于 **Windows 10/11、Windows 版 Codex 桌面应用、Node.js 22+ 和可运行的 Codex CLI**。当前已在维护者本机的 Windows Store 版 Codex 验证；其他版本不保证兼容。macOS、Linux 和终端状态栏不在支持范围内。
 
 1. 安装 [Node.js](https://nodejs.org/) 和 [Codex CLI](https://learn.chatgpt.com/docs/cli)，确认在 PowerShell 中能运行 `node --version`、`codex --version`，并已登录 Codex。
-2. 在 [Releases](https://github.com/Canvai1337/codex-context-panel-zh/releases) 下载 `codex-context-panel-zh-v1.5.0-windows.zip`，解压到任意文件夹。
+2. 在 [Releases](https://github.com/Canvai1337/codex-context-panel-zh/releases) 下载 `codex-context-panel-zh-v1.5.1-windows.zip`，解压到任意文件夹。
 3. 在解压后的文件夹打开 PowerShell，运行：
 
    ```powershell
@@ -44,7 +44,7 @@
 
 该文件仍保留原名称与位置，改为同时启动 Codex 和面板；原始快捷方式备份在 `%LOCALAPPDATA%\CodexContextPanel`，卸载自动恢复。后续安装会自动更新已接管的入口。此功能针对 `.lnk` 文件；Windows 自带的应用列表和原生任务栏固定入口不会自动改写。
 
-安装目录：`%LOCALAPPDATA%\Programs\CodexContextPanel\1.5.0`。不需要管理员权限。安装和运行无需 `npm install`；npm 开发依赖仅用于下文的测试和预览。
+安装目录：`%LOCALAPPDATA%\Programs\CodexContextPanel\1.5.1`。不需要管理员权限。安装和运行无需 `npm install`；npm 开发依赖仅用于下文的测试和预览。
 
 ## 数据说明与隐私
 
@@ -62,7 +62,7 @@
 在 PowerShell 中运行，然后正常重启 Codex：
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\CodexContextPanel\1.5.0\Uninstall.ps1"
+& "$env:LOCALAPPDATA\Programs\CodexContextPanel\1.5.1\Uninstall.ps1"
 ```
 
 如需一并删除面板诊断文件，在命令末尾加 `-RemoveSettings`。卸载只停止本面板及其只读 app-server，不停止 Codex 应用或其他聊天。

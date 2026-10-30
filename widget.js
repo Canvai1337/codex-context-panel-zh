@@ -1,5 +1,5 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.5.0',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.5.1',STORE='boss-context-panel-ui-v2';
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();
   const UUID=/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i;
@@ -11,7 +11,7 @@
   root.innerHTML=`<style>
   :host{--bg:var(--color-surface,#181818);--ink:var(--color-token-foreground,#fff);--muted:var(--color-token-text-secondary,rgba(255,255,255,.68));--faint:var(--app-color-text-foreground-tertiary,rgba(255,255,255,.52));--line:var(--color-border,rgba(255,255,255,.084));--accent:var(--color-token-foreground,#fff);--hover:var(--color-background-primary-surface,rgba(255,255,255,.04));--track:var(--color-border,rgba(255,255,255,.084));--quota-red:var(--color-text-danger-surface,#fa423e);--quota-yellow:var(--color-text-caution-surface,#ffc300);--quota-green:var(--color-text-success-surface,#04b84c);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",sans-serif;color:var(--ink);color-scheme:dark;container-type:inline-size;user-select:none}
   :host([data-light]){--bg:var(--color-surface,#fff);--ink:var(--color-token-foreground,#181818);--muted:var(--color-token-text-secondary,rgba(0,0,0,.65));--faint:var(--app-color-text-foreground-tertiary,rgba(0,0,0,.52));--line:var(--color-border,rgba(0,0,0,.084));--accent:var(--color-token-foreground,#181818);--hover:var(--color-background-primary-surface,rgba(0,0,0,.04));--track:var(--color-border,rgba(0,0,0,.084));--quota-red:var(--color-text-danger-surface,#ba2623);--quota-yellow:var(--color-border-caution-outline,#916f00);--quota-green:var(--color-border-success-outline,#008635);color-scheme:light}
-  *{box-sizing:border-box}[hidden]{display:none!important}button{font:inherit;color:inherit;border:0;cursor:pointer}button:focus-visible,summary:focus-visible{outline:2px solid var(--color-token-focus-border,#3a83f7);outline-offset:-3px;border-radius:6px}
+  *{box-sizing:border-box}[hidden]{display:none!important}button{font:inherit;color:inherit;border:0;cursor:pointer}button:focus-visible{outline:2px solid var(--color-token-focus-border,#3a83f7);outline-offset:-3px;border-radius:6px}
   .surface{width:100%;min-width:0;border:0;border-radius:0;background:var(--bg);box-shadow:none;overflow:hidden;backdrop-filter:none}
   .toggle{width:100%;min-height:40px;display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:7px 8px;background:none;text-align:left;border-radius:6px}.toggle:hover{background:var(--hover)}
   .label{font-size:13px;font-weight:400;white-space:nowrap;color:var(--muted)}.pill{font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--accent);padding:0;border:0;background:none;white-space:nowrap}.token-usage{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:8px}.quick{margin-left:auto;display:flex;align-items:center;gap:9px;min-width:0;font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}.quota-pill{font-size:14px;font-weight:600;white-space:nowrap}.chevron{width:14px;height:14px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-left:2px}.surface.expanded .chevron{transform:rotate(180deg)}
@@ -23,7 +23,7 @@
   [data-tone="low"]{color:var(--quota-red)}[data-tone="medium"]{color:var(--quota-yellow)}[data-tone="high"]{color:var(--quota-green)}[data-tone="unknown"]{color:var(--muted)}
   .scope-note{font-size:11px;line-height:1.65;color:var(--faint);margin-top:15px}.bar{height:5px;display:flex;border-radius:5px;overflow:hidden;background:var(--track);margin:15px 0 16px}.bar i{display:block;height:100%;min-width:0}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:12px;color:var(--muted)}.estimate{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--faint)}
   .rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px}.row{display:grid;grid-template-columns:7px minmax(0,1fr) 62px 46px;gap:8px;align-items:center;min-height:33px;font-size:13px;font-variant-numeric:tabular-nums}.dot{width:7px;height:7px;border-radius:2px;opacity:.9}.row-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.num,.pct{text-align:right;white-space:nowrap}.pct{color:var(--muted);font-size:12px}.unknown{color:var(--faint);grid-column:3/5;text-align:right;font-size:12px}
-  .separator{height:1px;background:var(--line);margin:13px 0}.meta{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}.foot{font-size:12px;color:var(--muted);line-height:1.7}.foot summary{display:flex;justify-content:space-between;cursor:pointer;list-style:none}.foot summary::-webkit-details-marker{display:none}.explain{padding:9px 0 1px;color:var(--muted);user-select:text}.status{font-size:13px;color:var(--muted);padding:2px 0 10px}.offline{color:var(--quota-yellow)}.stamp{margin-top:9px;font-size:11px;color:var(--faint)}
+  .compression-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;border-top:1px solid var(--line);margin-top:16px;padding-top:16px}.status{font-size:13px;color:var(--muted);padding:2px 0 10px}.offline{color:var(--quota-yellow)}.stamp{margin-top:9px;font-size:11px;color:var(--faint)}
   @container(max-width:620px){.top-summary{grid-template-columns:1fr;gap:18px}.quota-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border-left:0;border-top:1px solid var(--line);padding:14px 0 0}.quota-heading{flex-direction:column;align-items:flex-start;gap:5px}.rows{grid-template-columns:1fr;gap:0}.body{padding:14px}.quick{gap:7px}.token-usage{margin-left:0}.toggle{gap:8px}.metric-value{font-size:18px}}
   @container(max-width:350px){.toggle{gap:7px;padding-inline:7px}.token-usage{font-size:13px}.metric-value{font-size:17px}.top-summary{gap:16px}.body{padding:12px}.totals{gap:8px}.quota-details{gap:12px}.quota-number{font-size:21px}}
   @media(prefers-reduced-motion:no-preference){.chevron{transition:transform .16s ease}.bar i{transition:width .25s ease}}
@@ -86,7 +86,7 @@
   function globalSummary(d){updateQuota(el('.quota-pill'),d.quota?.fiveHour);el('.token-usage').textContent='已用 '+compact(d.used)+' / '+compact(d.window)+' · 剩余 '+compact(d.remaining);el('.token-usage').title='当前窗口已用 '+exact(d.used)+' Token / 总容量 '+exact(d.window)+' Token · 剩余 '+exact(d.remaining)+' Token';for(const n of root.querySelectorAll('.quota-number'))updateQuota(n,d.quota?.[n.dataset.period]);for(const n of root.querySelectorAll('.quota-reset'))n.textContent=d.quota?.status==='ready'?resetTime(d.quota[n.dataset.period]?.resetsAt,true):'官方额度数据暂不可用';}
   function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
   function row(r,window){const n=node('div','row');const dot=node('span','dot');dot.style.background=r.color;n.append(dot,node('span','row-label',r.label));if(!r.observable||r.tokens==null)n.append(node('span','unknown','未记录'));else{const num=node('span','num',fmt(r.tokens));num.title='约 '+exact(r.tokens)+' Token';n.append(num,node('span','pct',pc(window?r.tokens/window*100:null)));}return n;}
-  function metric(label,value){const tile=node('div','metric');const number=node('div','metric-value',exact(value));number.append(node('span','unit','Token'));tile.append(node('div','metric-name',label),number);return tile;}
+  function metric(label,value,unit='Token'){const tile=node('div','metric');const number=node('div','metric-value',typeof value==='string'?value:exact(value));number.append(node('span','unit',unit));tile.append(node('div','metric-name',label),number);return tile;}
   function globalDetails(body,d,showWindow=false){
     const activity=d.activity||{},quota=d.quota||{},top=node('div','top-summary'),main=node('div','usage-main');
     if(showWindow){const totals=node('div','totals');totals.append(metric('窗口已用总量',d.used),metric('窗口总容量',d.window),metric('剩余容量',d.remaining));main.append(totals);}
@@ -101,7 +101,7 @@
     last=cache.get(id)||last;
     if(data?.threadId===id){lastPing=Date.now();if(offline){offline=false;renderKey=null;}}
     const d=last||{status:'waiting',threadId:id},key=JSON.stringify(d);if(key===renderKey){theme();return;}renderKey=key;
-    const body=el('.body'),scroll=body.scrollTop,explainOpen=el('details')?.open;body.replaceChildren();
+    const body=el('.body'),scroll=body.scrollTop;body.replaceChildren();
     const accent=d.percent>=85?'var(--color-text-danger-surface,#fa423e)':d.percent>=70?'var(--color-text-warning-surface,#fb6a22)':null;
     if(accent)host.style.setProperty('--accent',accent);else host.style.removeProperty('--accent');
     el('.pill').textContent=d.percent==null?(d.status==='ready'?'容量未知':'暂无记录'):pc(d.percent);
@@ -115,10 +115,10 @@
       if(d.window)for(const r of d.rows||[]){if(!r.tokens)continue;const seg=node('i');seg.style.background=r.color;seg.style.width=Math.max(0,Math.min(100,r.tokens/d.window*100))+'%';bar.append(seg);}body.append(bar);
       const caption=node('div','section-title');caption.append(node('span','','占用构成'),node('span','estimate','分类估算'));body.append(caption);
       const rows=node('div','rows');for(const r of d.rows||[])rows.append(row(r,d.window));body.append(rows);
-      body.append(node('div','separator'));const meta=node('div','meta');meta.append(node('span','','自动压缩预留 · 未知'),node('span','','已压缩 '+(d.compactions||0)+' 次'));body.append(meta);
+      const compression=node('div','compression-stats');compression.setAttribute('aria-label','上下文压缩');
+      const reserve=metric('自动压缩预留',d.reserve??'未知');reserve.title='自动压缩预留未由日志提供时显示未知，剩余容量不代表距离压缩的精确余量。';
+      compression.append(reserve,metric('已压缩次数',d.compactions??0,'次'));body.append(compression);
     }
-    body.append(node('div','separator'));const details=node('details','foot'),summary=node('summary');summary.append(node('span','','数据说明'),node('span','','⌄'));details.append(summary,node('div','explain','窗口已用总量包含最近请求的输入与输出，容量采用同一条用量记录。分类按可观察内容估算，不是官方逐项计数；未记录不等于零。自动压缩预留未知，剩余容量不代表距离压缩的精确余量。'));details.open=!!explainOpen;body.append(details);
-    const stamp=d.updatedAt?new Date(d.updatedAt).toLocaleTimeString('zh-CN',{hour12:false}):'暂无记录';const footer=node('div','meta stamp');footer.append(node('span','','聊天 '+id.slice(0,8)),node('span','',stamp+' · 对话结束后更新'));footer.title=id;body.append(footer);
     if(d.parseErrors)body.append(node('div','stamp','有 '+d.parseErrors+' 条日志无法解析，分类可能不完整'));
     body.scrollTop=scroll;theme();expansion();
   }

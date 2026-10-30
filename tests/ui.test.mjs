@@ -27,6 +27,10 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   const closed=await geometry();assert.equal(closed.position,'static');assert.equal(closed.parent,true);assert.equal(closed.panel.x,closed.input.x);assert.equal(closed.panel.w,closed.input.w);assert(closed.panel.bottom<=closed.input.y);
   const out=path.resolve(here,'../outputs');await fs.mkdir(out,{recursive:true});await page.screenshot({path:path.join(out,'内嵌栏-收起预览.png')});
   await toggle.click();assert.equal(await body.isVisible(),true);const texts=await body.textContent();assert(texts.includes('分类估算'));assert(texts.includes('未记录'));assert(texts.includes('139,193'));assert(texts.includes('475,000'));assert(texts.includes('335,807'));
+  assert.equal(await body.locator('details,.foot,.meta').count(),0);assert(!texts.includes('数据说明'));assert(!texts.includes('聊天 '+ID.slice(0,8)));assert(!texts.includes('对话结束后更新'));
+  assert.equal(await body.locator('.compression-stats .metric-name').allTextContents().then(ns=>ns.join('|')),'自动压缩预留|已压缩次数');
+  const fontSizes=await body.locator('.totals .metric-name,.totals .metric-value,.compression-stats .metric-name,.compression-stats .metric-value').evaluateAll(ns=>ns.map(n=>({type:n.className,size:getComputedStyle(n).fontSize})));
+  assert(fontSizes.filter(n=>n.type==='metric-name').every(n=>n.size==='12px'));assert(fontSizes.filter(n=>n.type==='metric-value').every(n=>n.size==='18px'));
   const left=await panel.locator('.usage-main').boundingBox(),right=await panel.locator('.quota-details').boundingBox();assert(right.x>=left.x+left.width);assert(Math.abs(right.y-left.y)<2);
   assert(Number.parseFloat(await panel.locator('.quota-number').first().evaluate(n=>getComputedStyle(n).fontSize))>=21);
   for(const [used,tone]of [[0,'high'],[49.9,'high'],[50,'medium'],[79.9,'medium'],[80,'low'],[100,'low']]){
@@ -45,8 +49,8 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   assert.deepEqual(palette,{body:'rgb(48, 48, 48)',text:'rgb(238, 238, 238)',tile:'rgba(0, 0, 0, 0)',shadow:'none',gradient:'none',blur:'none',badge:'rgba(0, 0, 0, 0)'});
   await page.evaluate(()=>{for(const name of ['--color-surface','--color-token-foreground'])document.documentElement.style.removeProperty(name);});
   const opened=await geometry();assert.equal(opened.input.bottom,closed.input.bottom);assert(opened.panel.y<closed.panel.y);assert(opened.panel.bottom<=opened.input.y);assert(opened.panel.y>=0);
-  await page.screenshot({path:path.join(out,'内嵌栏-深色展开预览.png')});await panel.screenshot({path:path.join(out,'内嵌栏-详情.png')});
-  for(const width of [390,320]){await page.setViewportSize({width,height:700});const r=await geometry();assert(r.panel.x>=0&&r.panel.x+r.panel.w<=width);assert(r.panel.bottom<=r.input.y);assert(r.input.bottom<=700);assert(r.panel.y>=0);const overflow=await panel.evaluate(n=>{const s=n.shadowRoot;return [...s.querySelectorAll('.toggle,.token-usage,.totals,.metric-value,.rows,.quota-heading')].map(e=>({class:e.className,overflow:e.scrollWidth-e.clientWidth}));});assert(overflow.every(r=>r.overflow<=1),JSON.stringify(overflow));}
+  await page.setViewportSize({width:1200,height:1000});await page.screenshot({path:path.join(out,'内嵌栏-深色展开预览.png')});await panel.screenshot({path:path.join(out,'内嵌栏-详情.png')});
+  for(const width of [390,320]){await page.setViewportSize({width,height:700});const r=await geometry();assert(r.panel.x>=0&&r.panel.x+r.panel.w<=width);assert(r.panel.bottom<=r.input.y);assert(r.input.bottom<=700);assert(r.panel.y>=0);const overflow=await panel.evaluate(n=>{const s=n.shadowRoot;return [...s.querySelectorAll('.toggle,.token-usage,.totals,.metric-value,.rows,.quota-heading,.compression-stats')].map(e=>({class:e.className,overflow:e.scrollWidth-e.clientWidth}));});assert(overflow.every(r=>r.overflow<=1),JSON.stringify(overflow));}
   await page.setViewportSize({width:390,height:700});await page.screenshot({path:path.join(out,'内嵌栏-窄窗口预览.png')});
   await page.setViewportSize({width:390,height:450});let short=await geometry();assert(short.panel.y>=0&&short.input.bottom<=450);assert(short.panel.bottom<=short.input.y);
   // Native multiline composition grows upward without overlapping the bar.
@@ -58,7 +62,7 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   assert((await body.textContent()).includes('175,527,138'));assert((await body.textContent()).includes('周额度 · 剩余 53.0%'));
   await page.evaluate(()=>document.querySelector('[data-app-shell-active-page]').setAttribute('data-app-shell-active-page','false'));await page.waitForTimeout(40);assert.equal(await panel.isVisible(),false);
   await page.evaluate(id=>{document.querySelector('[data-app-shell-active-page]').setAttribute('data-app-shell-active-page','true');document.querySelector('[data-above-composer-conversation-id]').setAttribute('data-above-composer-conversation-id',id);document.body.style.color='#24272d';document.body.style.background='#fafafa';},ID);
-  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);assert.notEqual(await panel.getAttribute('data-light'),null);await page.screenshot({path:path.join(out,'内嵌栏-浅色预览.png')});
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);assert.notEqual(await panel.getAttribute('data-light'),null);await page.setViewportSize({width:1200,height:1000});await page.screenshot({path:path.join(out,'内嵌栏-浅色预览.png')});
   // React may replace the composer while the renderer itself stays alive.
   await page.evaluate(()=>{const n=document.querySelector('[data-codex-composer-root]'),copy=n.cloneNode(true);copy.querySelector('#boss-context-panel')?.remove();n.replaceWith(copy);});await page.waitForTimeout(40);assert.equal(await panel.isVisible(),true);assert.equal((await geometry()).parent,true);
   await page.addScriptTag({content:widget});assert.equal(await page.locator('#boss-context-panel').count(),1);
