@@ -16,6 +16,7 @@ internal static class StartupBridge
         public string executablePath { get; set; }
         public string nodePath { get; set; }
         public string daemonPath { get; set; }
+        public string servicePath { get; set; }
         public string stateRoot { get; set; }
         public string userDataDirectory { get; set; }
         public bool launchDaemon = true;
@@ -229,12 +230,16 @@ internal static class StartupBridge
             try
             {
                 ProcessStartInfo start = new ProcessStartInfo(config.nodePath,
-                    "\"" + config.daemonPath + "\" --owner-pid " + RuntimeOwner(config, pid) + " --port-file \"" + portFile + "\"");
+                    "\"" + (config.servicePath ?? config.daemonPath) + "\" --owner-pid " + RuntimeOwner(config, pid) + " --port-file \"" + portFile + "\"");
                 start.UseShellExecute = false; start.CreateNoWindow = true;
+                start.WorkingDirectory = Path.GetDirectoryName(config.servicePath ?? config.daemonPath);
                 start.EnvironmentVariables["CODEX_PANEL_STATE_DIR"] = config.stateRoot;
                 Process.Start(start);
             }
-            catch (Exception) { /* The application has already resumed normally. */ }
+            catch (Exception error)
+            {
+                try { File.AppendAllText(Path.Combine(stateRoot, "startup-error.log"), DateTime.UtcNow.ToString("o") + " service-start: " + error.Message + Environment.NewLine); } catch { }
+            }
         }
         return 0;
     }

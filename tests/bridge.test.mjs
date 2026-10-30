@@ -22,19 +22,29 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   await fs.writeFile(path.join(dataHome,'sessions',`rollout-${ID2}.jsonl`),record('session_meta',{id:ID2})+usage(330));
   const profile=path.join(dir,'chrome');context=await chromium.launchPersistentContext(profile,{channel:'chrome',headless:true,args:['--remote-debugging-port=0']});
   const active=await fs.readFile(path.join(profile,'DevToolsActivePort'),'utf8');const realPort=Number(active.split('\n')[0]);
+  // Chrome may publish its port file before the HTTP listener is ready.
+  await until(async()=>{try{return (await fetch(`http://127.0.0.1:${realPort}/json/version`)).ok;}catch{return false;}});
   // Only the test metadata is mapped to the app URL. No production app is touched.
-  server=http.createServer(async(req,res)=>{const list=await(await fetch(`http://127.0.0.1:${realPort}/json/list`)).json();res.setHeader('Content-Type','application/json');res.end(JSON.stringify(list.filter(t=>t.type==='page').map(t=>({...t,url:'app://-/index.html'}))));});
+  server=http.createServer(async(req,res)=>{try{const list=await(await fetch(`http://127.0.0.1:${realPort}/json/list`)).json();res.setHeader('Content-Type','application/json');res.end(JSON.stringify(list.filter(t=>t.type==='page').map(t=>({...t,url:'app://-/index.html'}))));}catch{res.writeHead(503);res.end('[]');}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
   let page=context.pages()[0];await page.setContent(fixtureHTML());
-  daemon=spawn(process.execPath,[path.resolve(here,'../daemon.mjs'),'--port',String(port)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
+  const portFile=path.join(dir,'panel-port');
+  daemon=spawn(process.execPath,[path.resolve(here,'../service.mjs'),'--port-file',portFile,'--owner-pid',String(process.pid)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
   let stderr='';daemon.stderr.on('data',b=>stderr+=b.toString());
   const pill=()=>page.locator('#boss-context-panel .pill').textContent().catch(()=>null);
+  await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8')).phase==='starting';}catch{return false;}});
+  await fs.writeFile(portFile,`${port}\n/devtools/browser/fixture\n`);
   await until(async()=>String(await pill()).includes('10.0%'));assert.equal(stderr,'');
   await fs.appendFile(file,usage(220));await until(async()=>String(await pill()).includes('22.0%'));
   await fs.appendFile(file,record('event_msg',{type:'task_started'})+usage(440));await wait(2600);assert.equal(await pill(),'22.0%');
   await fs.appendFile(file,record('event_msg',{type:'task_complete'}));await until(async()=>String(await pill()).includes('44.0%'));
   await page.evaluate(id=>document.querySelector('[data-above-composer-conversation-id]').setAttribute('data-above-composer-conversation-id',id),ID2);
   assert.equal(await pill(),'33.0%');
+  // A crashed background must be restarted and reinject the missing widget.
+  const stateDir=path.join(dir,'local','CodexContextPanel');
+  const first=JSON.parse(await fs.readFile(path.join(stateDir,'status.json'),'utf8'));
+  await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.dispose());process.kill(first.pid);
+  await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(stateDir,'status.json'),'utf8')).pid!==first.pid&&String(await pill()).includes('33.0%');}catch{return false;}});
   await page.close();page=await context.newPage();await page.setContent(fixtureHTML());
   await until(async()=>String(await pill()).includes('44.0%'));
   const status=JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8'));assert.equal(status.phase,'connected');

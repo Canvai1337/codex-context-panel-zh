@@ -49,3 +49,19 @@ export async function writeState(file,value){
   const temporary=file+'.'+process.pid+'.tmp';
   await fs.writeFile(temporary,JSON.stringify(value));await fs.rename(temporary,file);
 }
+
+// Bound diagnostic files and suppress repeated identical errors. Never log packets.
+export function diagnostics(stateDir,name='daemon-error.log'){
+  let previous='',previousAt=0,queue=Promise.resolve();
+  return (stage,error)=>{
+    const detail=`${stage}: ${error?.code||error?.name||'Error'} ${error?.message||'unknown error'}`.replace(/[\r\n]+/g,' ').slice(0,800);
+    if(detail===previous&&Date.now()-previousAt<60000)return queue;
+    previous=detail;previousAt=Date.now();
+    queue=queue.catch(()=>{}).then(async()=>{
+      const file=path.join(stateDir,name);await fs.mkdir(stateDir,{recursive:true});
+      try{if((await fs.stat(file)).size>128*1024){await fs.rm(file+'.old',{force:true});await fs.rename(file,file+'.old');}}catch{}
+      await fs.appendFile(file,new Date().toISOString()+' '+detail+'\n');
+    }).catch(()=>{});
+    return queue;
+  };
+}

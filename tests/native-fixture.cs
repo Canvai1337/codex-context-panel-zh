@@ -9,5 +9,6 @@ internal static class NativeFixture
             command = Environment.CommandLine,
             args = Environment.GetCommandLineArgs()
         }));
+        if (Array.IndexOf(args, "--fixture-hold") >= 0) System.Threading.Thread.Sleep(30000);
     }
 }

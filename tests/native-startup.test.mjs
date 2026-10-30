@@ -11,5 +11,6 @@ test('native startup appends arguments and fails open without touching other exe
  try{
   const {stdout}=await promisify(execFile)('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./native-startup.test.ps1',import.meta.url)),'-WorkRoot',dir],{windowsHide:true});
   assert.match(stdout,/5 isolated.*passed/);
+  assert.match(stdout,/supervised service launch and owner shutdown passed/);
  }finally{await fs.rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
 });

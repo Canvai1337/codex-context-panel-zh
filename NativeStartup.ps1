@@ -57,7 +57,7 @@ function Enable-PanelNativeStartup([string]$Root,[switch]$NoMaintenance){
   $executable=Join-Path $package.InstallLocation 'app\ChatGPT.exe'
   $nativeProfile=Join-Path $env:APPDATA 'Codex'
   if(Test-Path -LiteralPath (Join-Path $package.InstallLocation 'app\resources\owl-app.ini')){$nativeProfile=Join-Path $nativeProfile 'web\Codex'}
-  Write-PanelJson (Join-Path $Root 'bridge-config.json') @{executablePath=$executable;nodePath=$config.nodePath;daemonPath=(Join-Path $Root 'daemon.mjs');stateRoot=$stateRoot;userDataDirectory=$nativeProfile;launchDaemon=$true}
+  Write-PanelJson (Join-Path $Root 'bridge-config.json') @{executablePath=$executable;nodePath=$config.nodePath;servicePath=(Join-Path $Root 'service.mjs');daemonPath=(Join-Path $Root 'daemon.mjs');stateRoot=$stateRoot;userDataDirectory=$nativeProfile;launchDaemon=$true}
   try{
     Invoke-PanelBridge $helper '--register' $package.PackageFullName
     Write-PanelJson $recordPath @{version=$config.version;installRoot=$Root;helperPath=$helper;packageFullName=$package.PackageFullName;packageFamilyName=$package.PackageFamilyName;executablePath=$executable;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([string]$WorkRoot,[switch]$WithService)
 $ErrorActionPreference='Stop'
 if(-not $WorkRoot){$WorkRoot=Join-Path $PSScriptRoot '..\outputs\native-codex-probe'}
@@ -8,7 +8,7 @@ $package=Get-AppxPackage -Name OpenAI.Codex|Sort-Object Version -Descending|Sele
 $executable=Join-Path $package.InstallLocation 'app\ChatGPT.exe'
 $bridgeRoot=Join-Path $WorkRoot 'bridge'
 & (Join-Path $PSScriptRoot 'Build-Native.ps1') -OutputRoot $bridgeRoot|Out-Null
-@{executablePath=$executable;launchDaemon=[bool]$WithService;stateRoot=(Join-Path $WorkRoot 'state');nodePath=(Get-Command node).Source;daemonPath=(Join-Path $repoRoot 'daemon.mjs')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $bridgeRoot 'bridge-config.json') -Encoding utf8
+@{executablePath=$executable;launchDaemon=[bool]$WithService;stateRoot=(Join-Path $WorkRoot 'state');nodePath=(Get-Command node).Source;servicePath=(Join-Path $repoRoot 'service.mjs');daemonPath=(Join-Path $repoRoot 'daemon.mjs')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $bridgeRoot 'bridge-config.json') -Encoding utf8
 Add-Type -Path (Join-Path $repoRoot 'tests\native-process.cs')
 $environment=[Environment]::GetEnvironmentVariables()
 $environment['CODEX_ELECTRON_USER_DATA_PATH']=Join-Path $WorkRoot 'electron'

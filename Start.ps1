@@ -31,7 +31,7 @@ namespace PanelActivation {
   # by Windows and StartupBridge, without this launcher or a modified shortcut.
   $applicationProcess=Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'"|Where-Object {$_.CommandLine -notmatch '--type=' -and $_.ExecutablePath -match '\\OpenAI\.Codex_'}|Select-Object -First 1
   if(-not $applicationProcess){return}
-  $port=0
+  $port=0;$portFile=$null
   if($applicationProcess.CommandLine -match '--remote-debugging-port=(\d+)' -and [int]$Matches[1] -gt 0){$port=[int]$Matches[1]}
   if(-not $port){
     $bridgeConfig=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'bridge-config.json') -Raw -Encoding UTF8|ConvertFrom-Json
@@ -39,9 +39,12 @@ namespace PanelActivation {
     if(Test-Path -LiteralPath $portFile){$port=[int]((Get-Content -LiteralPath $portFile -Raw).Split("`n")[0])}
   }
   if($port -and (Test-PanelPort $port)){
-    $daemon=Join-Path $PSScriptRoot 'daemon.mjs'
+    $daemon=Join-Path $PSScriptRoot 'service.mjs'
     $daemonArgument='"'+$daemon+'"'
-    Start-Process -FilePath $config.nodePath -ArgumentList @($daemonArgument,'--port',"$port",'--owner-pid',"$($applicationProcess.ProcessId)") -WindowStyle Hidden|Out-Null
+    # Keep rediscovering the port after renderer / application handover.
+    $arguments=@($daemonArgument,'--owner-pid',"$($applicationProcess.ProcessId)")
+    if($portFile){$arguments+=@('--port-file',('"'+$portFile+'"'))}else{$arguments+=@('--port',"$port")}
+    Start-Process -FilePath $config.nodePath -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden|Out-Null
   }
 }catch{
   New-Item -ItemType Directory -Force -Path $stateRoot|Out-Null

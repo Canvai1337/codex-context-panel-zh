@@ -5,12 +5,16 @@ import {SessionStore} from './data.mjs';
 import {CDP,targets} from './cdp.mjs';
 import {AccountClient,normalizeQuota} from './account.mjs';
 import {LocalUsage} from './usage.mjs';
-import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState} from './runtime.mjs';
+import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const options=runtimeOptions();let port=options.port;
-const VERSION='1.6.0';
+const VERSION='1.6.1';
 const stateDir=process.env.CODEX_PANEL_STATE_DIR||(process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'CodexContextPanel'):path.join(here,'runtime'));
-const lease=await acquireRuntime(stateDir);if(!lease)process.exit(0);
+const supervised=process.env.CODEX_PANEL_SUPERVISED==='1'&&typeof process.send==='function';
+const lease=supervised?null:await acquireRuntime(stateDir);if(!supervised&&!lease)process.exit(0);
+const log=diagnostics(stateDir);
+function heartbeat(phase){if(supervised&&process.connected)process.send({type:'heartbeat',phase});}
+heartbeat('starting');
 const widget=await fs.readFile(path.join(here,'widget.js'),'utf8');
 const store=new SessionStore();const connections=new Map();
 let config={};try{config=JSON.parse((await fs.readFile(path.join(here,'install-config.json'),'utf8')).replace(/^\uFEFF/,''));}catch{}
@@ -25,7 +29,7 @@ function refreshGlobal(){
 }
 let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;
 function warm(){if(warming||Date.now()-warmAt<10000)return;warming=true;warmAt=Date.now();store.prewarm().catch(()=>{}).finally(()=>{warming=false;});}
-async function state(value){await writeState(path.join(stateDir,'status.json'),{version:VERSION,pid:process.pid,port,ownerPid:options.ownerPid,updatedAt:new Date().toISOString(),...value});}
+async function state(value){await writeState(path.join(stateDir,'status.json'),{version:VERSION,pid:process.pid,supervisorPid:supervised?process.ppid:null,port,ownerPid:options.ownerPid,updatedAt:new Date().toISOString(),...value});heartbeat(value.phase);}
 async function tick(){
   if(options.portFile&&!connections.size){
     const discovered=await portFromFile(options.portFile);
@@ -61,18 +65,20 @@ async function tick(){
         await c.evaluate(`window.__BOSS_CONTEXT_PANEL__?.updatePacket(${JSON.stringify(packet)})`);
       }else await c.evaluate('window.__BOSS_CONTEXT_PANEL__?.ping()');
       lastReady=Date.now();
-    }catch{c?.close();connections.delete(target.id);}
+    }catch(error){await log('window-connect',error);c?.close();connections.delete(target.id);}
   }));
   await state({phase:connections.size?'connected':'waiting',windows:connections.size,cachedThreads:store.reports.size,quotaStatus:quota.status,quotaFetchedAt:quota.fetchedAt,usageStatus:usage.view.status,tokenUpdatedAt:usage.view.updatedAt});
 }
 for(const event of ['SIGTERM','SIGINT'])process.on(event,()=>{stopping=true;for(const c of connections.values())c.close();});
+if(supervised)process.on('disconnect',()=>{stopping=true;account?.close();for(const c of connections.values())c.close();});
+let failures=0;
 try{
   if(port!==null)await writeState(path.join(stateDir,'runtime.json'),{version:VERSION,port,daemonPid:process.pid,ownerPid:options.ownerPid,installRoot:here,startedAt:new Date().toISOString()});
   while(!stopping&&ownerAlive(options.ownerPid)){
-    try{await tick();}catch{}
+    try{await tick();failures=0;}catch(error){await log('tick',error);if(++failures>=3)throw error;}
     if(options.ownerPid===null&&Date.now()-lastReady>180000)break;
     await new Promise(r=>setTimeout(r,port===null?150:1000));
   }
 }finally{
-  for(const c of connections.values())c.close();account?.close();await state({phase:'stopped',windows:0});await lease.close();
+  for(const c of connections.values())c.close();account?.close();try{await state({phase:'stopped',windows:0});}finally{await lease?.close();}
 }

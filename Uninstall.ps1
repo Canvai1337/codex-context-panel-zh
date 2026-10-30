@@ -4,15 +4,13 @@ $ErrorActionPreference='Stop'
 $installPath=[IO.Path]::GetFullPath($PSScriptRoot)
 $expected=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel'))+[IO.Path]::DirectorySeparatorChar
 if(-not $installPath.StartsWith($expected,[StringComparison]::OrdinalIgnoreCase)){throw '仅可从已安装的 CodexContextPanel 版本目录卸载'}
-$daemon=Join-Path $installPath 'daemon.mjs'
 . (Join-Path $PSScriptRoot 'NativeStartup.ps1')
 Disable-PanelNativeStartup $installPath
 . (Join-Path $PSScriptRoot 'Shortcuts.ps1')
 Restore-PanelShortcuts -InstallRoot $installPath
-Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {$_.CommandLine -and $_.CommandLine.Contains($daemon)}|ForEach-Object {
+Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {$_.CommandLine -and ($_.CommandLine.Contains((Join-Path $installPath 'service.mjs')) -or $_.CommandLine.Contains((Join-Path $installPath 'daemon.mjs')))}|Sort-Object @{Expression={if($_.CommandLine -match 'service\.mjs'){0}else{1}}}|ForEach-Object {
   $daemonId=$_.ProcessId
-  Get-CimInstance Win32_Process -Filter "ParentProcessId=$daemonId" | Where-Object {$_.Name -eq 'codex.exe' -and $_.CommandLine -match 'app-server.*stdio://'} | ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue}
-  Stop-Process -Id $daemonId -ErrorAction SilentlyContinue
+  if(Get-Process -Id $daemonId -ErrorAction SilentlyContinue){Start-Process -FilePath "$env:WINDIR\System32\taskkill.exe" -ArgumentList @('/PID',"$daemonId",'/T','/F') -WindowStyle Hidden -Wait|Out-Null}
 }
 $shell=New-Object -ComObject WScript.Shell
 foreach($folder in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))){

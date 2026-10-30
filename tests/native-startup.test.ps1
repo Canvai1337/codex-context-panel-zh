@@ -35,3 +35,32 @@ foreach($scenario in @('wrong-target','renderer','existing-port','missing-config
   }
 }
 Write-Output 'native startup: 5 isolated launch/argument/fail-open scenarios passed'
+
+# Exercise the real service entrypoint as well as command-line patching.
+$serviceState=Join-Path $WorkRoot 'service-state'
+$env:CODEX_PANEL_DISABLE_ACCOUNT='1'
+$env:CODEX_HOME=Join-Path $WorkRoot 'codex-data'
+@{executablePath=$fixture;launchDaemon=$true;stateRoot=$serviceState;userDataDirectory=(Join-Path $WorkRoot 'profile');nodePath=(Get-Command node).Source;servicePath=(Join-Path $repoRoot 'service.mjs')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $bridgeRoot 'bridge-config.json') -Encoding utf8
+$target=[PanelFixtureProcess]::Start($fixture,('"'+$fixture+'" "'+(Join-Path $WorkRoot 'service-fixture.json')+'" --fixture-hold'))
+$service=$null
+try{
+  $helper=Start-Process -FilePath (Join-Path $bridgeRoot 'StartupBridge.exe') -ArgumentList @('-p',"$($target.pid)",'-tid',"$($target.tid)") -WindowStyle Hidden -PassThru
+  if(-not $helper.WaitForExit(5000)){throw 'service bridge did not exit'}
+  $status=$null
+  for($attempt=0;$attempt -lt 80;$attempt++){
+    try{$status=Get-Content -LiteralPath (Join-Path $serviceState 'status.json') -Raw -Encoding UTF8|ConvertFrom-Json}catch{}
+    if($status.supervisorPid -and $status.ownerPid -eq $target.pid){break}
+    Start-Sleep -Milliseconds 100
+  }
+  if(-not $status.supervisorPid -or $status.ownerPid -ne $target.pid){throw 'bridge did not launch supervised background'}
+  $service=Get-Process -Id $status.supervisorPid -ErrorAction Stop
+  [void][PanelFixtureProcess]::TerminateProcess($target.process,0)
+  if(-not $service.WaitForExit(7000)){throw 'supervised background did not exit with owner'}
+  $final=Get-Content -LiteralPath (Join-Path $serviceState 'service-status.json') -Raw -Encoding UTF8|ConvertFrom-Json
+  if($final.phase -ne 'stopped'){throw 'service did not record shutdown'}
+  Write-Output 'native startup: supervised service launch and owner shutdown passed'
+}finally{
+  if([PanelFixtureProcess]::WaitForSingleObject($target.process,0) -ne 0){[void][PanelFixtureProcess]::TerminateProcess($target.process,1)}
+  if($service -and -not $service.HasExited){& "$env:WINDIR\System32\taskkill.exe" /PID $service.Id /T /F 2>$null|Out-Null}
+  [void][PanelFixtureProcess]::CloseHandle($target.thread);[void][PanelFixtureProcess]::CloseHandle($target.process)
+}
