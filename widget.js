@@ -1,5 +1,5 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.5.1',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.6.0',STORE='boss-context-panel-ui-v2';
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();
   const UUID=/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i;
@@ -38,7 +38,14 @@
     if(previous?.status==='ready'&&['read_error','not_found','waiting','compacting'].includes(data.status))return;
     cache.delete(id);cache.set(id,data);if(cache.size>256)cache.delete(cache.keys().next().value);
   }
-  for(const data of window.__BOSS_CONTEXT_PANEL_SEED__||[])remember(data);
+  let packetGlobals={};
+  function ingestPacket(packet){
+    const globalChanged='quota'in packet||'activity'in packet;
+    if('quota'in packet)packetGlobals.quota=packet.quota;if('activity'in packet)packetGlobals.activity=packet.activity;
+    const updated=new Set();for(const data of packet.threads||[]){updated.add(data.threadId);remember({...data,...packetGlobals});}
+    if(globalChanged)for(const data of [...cache.values()])if(!updated.has(data.threadId)&&!frozen.has(data.threadId))remember({...data,...packetGlobals});
+  }
+  const seed=window.__BOSS_CONTEXT_PANEL_SEED__;if(Array.isArray(seed)){for(const data of seed)remember(data);}else if(seed)ingestPacket(seed);
   delete window.__BOSS_CONTEXT_PANEL_SEED__;
   const el=s=>root.querySelector(s);
   const active=n=>!n.closest('[data-app-shell-active-page="false"],[aria-hidden="true"],[inert]');
@@ -126,6 +133,7 @@
   const observer=new MutationObserver(sync);observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['data-app-shell-active-page','data-above-composer-conversation-id','data-conversation-id','aria-hidden','inert']});
   const timer=setInterval(()=>{sync();if(last&&!frozen.has(current))globalSummary(last);if(current&&last&&!offline&&Date.now()-lastPing>12000){offline=true;renderKey=null;el('.toggle').title='本机连接已断开，保留上次记录';el('.body').prepend(node('div','status offline','本机连接已断开，以下为上次记录'));}if(host.isConnected)theme();},2000);
   window.addEventListener('resize',layout);
-  window[KEY]={version:VERSION,select,update:render,updateBatch(data){for(const item of data)remember(item);render(null);lastPing=Date.now();if(offline){offline=false;renderKey=null;render(null);}},dispose(){destroyed=true;observer.disconnect();clearInterval(timer);if(layoutFrame!=null)cancelAnimationFrame(layoutFrame);window.removeEventListener('resize',layout);host.remove();delete window[KEY];}};
+  function ping(){lastPing=Date.now();if(offline){offline=false;renderKey=null;render(null);}}
+  window[KEY]={version:VERSION,select,update:render,ping,updatePacket(packet){ingestPacket(packet);render(null);ping();},updateBatch(data){for(const item of data)remember(item);render(null);ping();},dispose(){destroyed=true;observer.disconnect();clearInterval(timer);if(layoutFrame!=null)cancelAnimationFrame(layoutFrame);window.removeEventListener('resize',layout);host.remove();delete window[KEY];}};
   sync();render(null);
 })()

@@ -5,9 +5,12 @@ import {SessionStore} from './data.mjs';
 import {CDP,targets} from './cdp.mjs';
 import {AccountClient,normalizeQuota} from './account.mjs';
 import {LocalUsage} from './usage.mjs';
+import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
-const port=Number(process.argv[process.argv.indexOf('--port')+1]);
-if(!Number.isInteger(port)||port<1024||port>65535)throw Error('必须提供有效端口');
+const options=runtimeOptions();let port=options.port;
+const VERSION='1.6.0';
+const stateDir=process.env.CODEX_PANEL_STATE_DIR||(process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'CodexContextPanel'):path.join(here,'runtime'));
+const lease=await acquireRuntime(stateDir);if(!lease)process.exit(0);
 const widget=await fs.readFile(path.join(here,'widget.js'),'utf8');
 const store=new SessionStore();const connections=new Map();
 let config={};try{config=JSON.parse((await fs.readFile(path.join(here,'install-config.json'),'utf8')).replace(/^\uFEFF/,''));}catch{}
@@ -20,32 +23,56 @@ function refreshGlobal(){
   }
   if(!usagePending&&(!usageAt||now-usageAt>=10000)){usagePending=true;usageAt=now;usage.refresh().catch(()=>{usage.view={...usage.view,status:'unavailable',todayTokens:null,weekTokens:null};}).finally(()=>{usagePending=false;});}
 }
-const stateDir=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'CodexContextPanel'):path.join(here,'runtime');
-await fs.mkdir(stateDir,{recursive:true});
 let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;
 function warm(){if(warming||Date.now()-warmAt<10000)return;warming=true;warmAt=Date.now();store.prewarm().catch(()=>{}).finally(()=>{warming=false;});}
-async function state(value){const tmp=path.join(stateDir,`status-${process.pid}.tmp`);await fs.writeFile(tmp,JSON.stringify({version:'1.5.1',pid:process.pid,port,updatedAt:new Date().toISOString(),...value}));await fs.rename(tmp,path.join(stateDir,'status.json'));}
+async function state(value){await writeState(path.join(stateDir,'status.json'),{version:VERSION,pid:process.pid,port,ownerPid:options.ownerPid,updatedAt:new Date().toISOString(),...value});}
 async function tick(){
-  refreshGlobal();
-  warm();
+  if(options.portFile&&!connections.size){
+    const discovered=await portFromFile(options.portFile);
+    if(discovered!==null&&discovered!==port){port=discovered;await writeState(path.join(stateDir,'runtime.json'),{version:VERSION,port,daemonPid:process.pid,ownerPid:options.ownerPid,installRoot:here,startedAt:new Date().toISOString()});}
+  }
+  if(port===null){
+    port=await portFromFile(options.portFile);
+    if(port===null){await state({phase:'starting',windows:0});return;}
+    await writeState(path.join(stateDir,'runtime.json'),{version:VERSION,port,daemonPid:process.pid,ownerPid:options.ownerPid,installRoot:here,startedAt:new Date().toISOString()});
+  }
   let list;try{list=await targets(port);}catch{list=[];}
+  if(list.length){refreshGlobal();warm();}
   const ids=new Set(list.map(t=>t.id));
   for(const [id,c]of connections)if(!ids.has(id)||c.closed){c.close();connections.delete(id);}
   await Promise.all(list.map(async target=>{
     let c=connections.get(target.id);
     try{
       if(!c){c=await new CDP(target).open();connections.set(target.id,c);}
-      const cached=[...store.reports.values()].map(data=>({...data,quota,activity:usage.view}));
-      await c.evaluate(`if(window.__BOSS_CONTEXT_PANEL__?.version!=='1.5.1')window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(cached)};\n${widget}`);
-      const threadId=await c.evaluate('window.__BOSS_CONTEXT_PANEL__?.select()||null');
-      const data={...await store.get(threadId),quota,activity:usage.view};
-      const batch=[...cached.filter(d=>d.threadId!==threadId),data];
-      await c.evaluate(`window.__BOSS_CONTEXT_PANEL__?.updateBatch(${JSON.stringify(batch)})`);
+      let panel=await c.evaluate('({version:window.__BOSS_CONTEXT_PANEL__?.version,id:window.__BOSS_CONTEXT_PANEL__?.select()||null})');
+      if(panel.version!==VERSION){
+        const seed={threads:[...store.reports.values()],quota,activity:usage.view};
+        await c.evaluate(`window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(seed)};\n${widget}`);
+        panel=await c.evaluate('({id:window.__BOSS_CONTEXT_PANEL__?.select()||null})');c.panelReports=new Map();c.panelGlobals=null;
+      }
+      const data=await store.get(panel.id);
+      const reports=[...[...store.reports.values()].filter(d=>d.threadId!==panel.id),data].filter(d=>d.threadId);
+      c.panelReports??=new Map();const changed=[];
+      const liveReports=new Set(reports.map(d=>d.threadId));for(const id of c.panelReports.keys())if(!liveReports.has(id))c.panelReports.delete(id);
+      for(const report of reports){const key=JSON.stringify(report);if(c.panelReports.get(report.threadId)!==key){changed.push(report);c.panelReports.set(report.threadId,key);}}
+      const globalKey=JSON.stringify({quota,activity:usage.view}),globalChanged=globalKey!==c.panelGlobals;c.panelGlobals=globalKey;
+      if(changed.length||globalChanged){
+        const packet={threads:changed,...globalChanged?{quota,activity:usage.view}:{}};
+        await c.evaluate(`window.__BOSS_CONTEXT_PANEL__?.updatePacket(${JSON.stringify(packet)})`);
+      }else await c.evaluate('window.__BOSS_CONTEXT_PANEL__?.ping()');
       lastReady=Date.now();
     }catch{c?.close();connections.delete(target.id);}
   }));
   await state({phase:connections.size?'connected':'waiting',windows:connections.size,cachedThreads:store.reports.size,quotaStatus:quota.status,quotaFetchedAt:quota.fetchedAt,usageStatus:usage.view.status,tokenUpdatedAt:usage.view.updatedAt});
 }
 for(const event of ['SIGTERM','SIGINT'])process.on(event,()=>{stopping=true;for(const c of connections.values())c.close();});
-while(!stopping){try{await tick();}catch{}if(Date.now()-lastReady>180000)break;await new Promise(r=>setTimeout(r,2000));}
-account?.close();await state({phase:'stopped',windows:0});
+try{
+  if(port!==null)await writeState(path.join(stateDir,'runtime.json'),{version:VERSION,port,daemonPid:process.pid,ownerPid:options.ownerPid,installRoot:here,startedAt:new Date().toISOString()});
+  while(!stopping&&ownerAlive(options.ownerPid)){
+    try{await tick();}catch{}
+    if(options.ownerPid===null&&Date.now()-lastReady>180000)break;
+    await new Promise(r=>setTimeout(r,port===null?150:1000));
+  }
+}finally{
+  for(const c of connections.values())c.close();account?.close();await state({phase:'stopped',windows:0});await lease.close();
+}

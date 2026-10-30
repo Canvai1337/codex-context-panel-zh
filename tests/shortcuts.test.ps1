@@ -1,11 +1,14 @@
 param([string]$WorkRoot)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '..\Shortcuts.ps1')
-foreach($file in @('Start.ps1','Install.ps1','Uninstall.ps1','Shortcuts.ps1')){
+foreach($file in @('Start.ps1','Install.ps1','Uninstall.ps1','Shortcuts.ps1','NativeStartup.ps1','Recover-NativeStartup.ps1','.code\Build-Native.ps1')){
   $parseErrors=$null;$tokens=$null
   [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot "..\$file"),[ref]$tokens,[ref]$parseErrors)
   if($parseErrors.Count){throw ($parseErrors|Out-String)}
 }
+$InstallRoot='caller-path-must-stay-unchanged'
+. (Join-Path $PSScriptRoot '..\NativeStartup.ps1')
+if($InstallRoot -ne 'caller-path-must-stay-unchanged'){throw 'native module overwrote caller install root'}
 $shell=New-Object -ComObject WScript.Shell
 $shortcutPath=Join-Path $WorkRoot 'ChatGPT.lnk'
 $link=$shell.CreateShortcut($shortcutPath);$link.TargetPath=Join-Path $env:WINDIR 'System32\notepad.exe';$link.Description='original';$link.Save()

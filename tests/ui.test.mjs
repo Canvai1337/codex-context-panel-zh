@@ -84,6 +84,11 @@ test('cached switching is synchronous; a running turn freezes every visible metr
   assert.equal(await panel.textContent(),before);
   await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update({...d,turnActive:false,used:250000,percent:52.6}),demo);assert.equal(await panel.locator('.pill').textContent(),'52.6%');
   await page.evaluate(id=>window.__BOSS_CONTEXT_PANEL__.update({threadId:id,status:'read_error'}),ID);assert.equal(await panel.locator('.pill').textContent(),'52.6%');
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[],quota:{...d.quota,fiveHour:{usedPercent:40}},activity:d.activity}),demo);assert.equal(await panel.locator('.quota-pill').textContent(),'60.0%');
+  const packetBefore=await panel.textContent();
+  await page.evaluate(id=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[{threadId:id,status:'ready',turnActive:true}]}),ID);
+  await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[],quota:{status:'ready',fiveHour:{usedPercent:99}},activity:{todayTokens:1}}));assert.equal(await panel.textContent(),packetBefore);
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[{...d,turnActive:false}],quota:d.quota,activity:d.activity}),demo);assert.equal(await panel.locator('.pill').textContent(),'29.3%');
   await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.dispose());
  }finally{await browser.close();}
 });

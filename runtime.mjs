@@ -1,0 +1,51 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import net from 'node:net';
+import {createHash} from 'node:crypto';
+
+export function runtimeOptions(args=process.argv.slice(2)){
+  const options={port:null,portFile:null,ownerPid:null};
+  for(let i=0;i<args.length;i+=2){
+    const value=args[i+1];if(value===undefined)throw Error('启动参数缺少值');
+    if(args[i]==='--port')options.port=Number(value);
+    else if(args[i]==='--port-file')options.portFile=path.resolve(value);
+    else if(args[i]==='--owner-pid')options.ownerPid=Number(value);
+    else throw Error('未知的启动参数');
+  }
+  if(options.port!==null&&(!Number.isInteger(options.port)||options.port<1024||options.port>65535))throw Error('必须提供有效端口');
+  if(options.ownerPid!==null&&(!Number.isInteger(options.ownerPid)||options.ownerPid<1))throw Error('无效的应用进程');
+  if(options.port===null&&!options.portFile)throw Error('必须提供接入端口或端口文件');
+  return options;
+}
+
+export function ownerAlive(pid){
+  if(pid===null)return true;
+  try{process.kill(pid,0);return true;}catch(error){return error.code==='EPERM';}
+}
+
+export async function portFromFile(file){
+  try{
+    const stat=await fs.stat(file);if(stat.size>8192)return null;
+    const [number,browser]=String(await fs.readFile(file,'utf8')).trim().split(/\r?\n/);
+    if(!/^\d+$/.test(number)||!/^\/devtools\/browser\/[\w-]+$/.test(browser||''))return null;
+    const port=Number(number);return port>=1024&&port<=65535?port:null;
+  }catch{return null;}
+}
+
+export async function acquireRuntime(stateDir){
+  await fs.mkdir(stateDir,{recursive:true});
+  const identity=createHash('sha256').update(path.resolve(stateDir).toLowerCase()).digest('hex').slice(0,24);
+  const socket=process.platform==='win32'?`\\\\.\\pipe\\codex-context-panel-${identity}`:path.join(stateDir,'daemon.sock');
+  const server=net.createServer(client=>client.end());
+  const listening=await new Promise((resolve,reject)=>{
+    server.once('error',error=>error.code==='EADDRINUSE'?resolve(false):reject(error));
+    server.listen(socket,()=>resolve(true));
+  });
+  if(!listening){server.close();return null;}
+  return {close:()=>new Promise(resolve=>server.close(resolve))};
+}
+
+export async function writeState(file,value){
+  const temporary=file+'.'+process.pid+'.tmp';
+  await fs.writeFile(temporary,JSON.stringify(value));await fs.rename(temporary,file);
+}
