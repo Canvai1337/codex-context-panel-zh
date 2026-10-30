@@ -1,0 +1,11 @@
+Codex Context Panel (Chinese), 1.4.0.
+This is an unofficial local extension, not affiliated with OpenAI.
+
+Design and telemetry references (not installed or executed as plugins):
+https://github.com/KevinKE93/Codex-Monitor (MIT)
+https://github.com/androidZzT/context-window-inspector (MIT)
+https://github.com/JiaYang-BUAA/Codex-Desktop-Usage-Monitor-Windows (MIT)
+
+The panel is an independent implementation. It follows the documented
+observable-payload byte-weight attribution approach and local CDP injection
+pattern. No upstream executable, asset or source file is bundled.
