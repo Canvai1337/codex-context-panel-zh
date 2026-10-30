@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([switch]$NoMessage)
+param([switch]$NoMessage,[switch]$NoActivate)
 $ErrorActionPreference='Stop'
 $stateRoot=Join-Path $env:LOCALAPPDATA 'CodexContextPanel'
 $config=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'install-config.json') -Raw | ConvertFrom-Json
@@ -35,14 +35,17 @@ try{
       return
     }
   }
-  if(-not $activePort){
+  $needsLaunch=-not $activePort
+  if($needsLaunch){
     foreach($candidate in 9340..9371){
       $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$candidate)
       try{$listener.Server.ExclusiveAddressUse=$true;$listener.Start();$activePort=$candidate;break}catch{}finally{$listener.Stop()}
     }
     if(-not $activePort){throw '没有可用的本机端口'}
+  }
+  if($needsLaunch -or -not $NoActivate){
     $package=Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1
-    $launchArgs="--remote-debugging-port=$activePort --remote-debugging-address=127.0.0.1 --remote-allow-origins=http://127.0.0.1:$activePort"
+    $launchArgs=if($needsLaunch){"--remote-debugging-port=$activePort --remote-debugging-address=127.0.0.1 --remote-allow-origins=http://127.0.0.1:$activePort"}else{''}
     if($package){
       $manifest=[xml](Get-Content -LiteralPath (Join-Path $package.InstallLocation 'AppxManifest.xml') -Raw)
       $application=@($manifest.Package.Applications.Application)|Where-Object {$_.Executable -match 'ChatGPT\.exe$'}|Select-Object -First 1
@@ -61,11 +64,19 @@ namespace BossContextActivation {
     }else{
       $desktopPath=$config.desktopPath
       if(-not (Test-Path -LiteralPath $desktopPath)){throw '未找到 Codex 应用，请重新安装面板以发现应用路径'}
-      Start-Process -FilePath $desktopPath -ArgumentList $launchArgs -WindowStyle Normal|Out-Null
+      $launchOptions=@{FilePath=$desktopPath;WindowStyle='Normal'};if($launchArgs){$launchOptions.ArgumentList=$launchArgs}
+      Start-Process @launchOptions|Out-Null
     }
   }
   # Reuse only a daemon launched from this exact installed path and port.
   $daemon=Join-Path $PSScriptRoot 'daemon.mjs'
+  $panelRoot=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel'))+[IO.Path]::DirectorySeparatorChar
+  $older=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {$_.CommandLine -and $_.CommandLine.Contains($panelRoot) -and $_.CommandLine -match 'daemon\.mjs"?\s+--port\s+\d+' -and -not $_.CommandLine.Contains($daemon)})
+  foreach($old in $older){
+    $oldId=$old.ProcessId
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$oldId"|Where-Object {$_.Name -eq 'codex.exe' -and $_.CommandLine -match 'app-server.*stdio://'}|ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue}
+    Stop-Process -Id $oldId -ErrorAction SilentlyContinue
+  }
   $owned=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {$_.CommandLine -and $_.CommandLine.Contains($daemon) -and $_.CommandLine -match "--port $activePort(?:\s|$)"})
   if(-not $owned.Count){
     $log=Join-Path $stateRoot 'daemon.log';$err=Join-Path $stateRoot 'daemon-error.log'

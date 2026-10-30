@@ -62,7 +62,24 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   // React may replace the composer while the renderer itself stays alive.
   await page.evaluate(()=>{const n=document.querySelector('[data-codex-composer-root]'),copy=n.cloneNode(true);copy.querySelector('#boss-context-panel')?.remove();n.replaceWith(copy);});await page.waitForTimeout(40);assert.equal(await panel.isVisible(),true);assert.equal((await geometry()).parent,true);
   await page.addScriptTag({content:widget});assert.equal(await page.locator('#boss-context-panel').count(),1);
-  await page.clock.fastForward(16000);assert.equal(await panel.locator('.pill').textContent(),'连接已断开');await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);assert((await panel.locator('.pill').textContent()).includes('29.3%'));
+  await page.clock.fastForward(16000);assert((await panel.locator('.pill').textContent()).includes('29.3%'));assert((await toggle.getAttribute('title')).includes('连接已断开'));await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);assert((await panel.locator('.pill').textContent()).includes('29.3%'));
   await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.dispose());assert.equal(await page.locator('#boss-context-panel').count(),0);
+ }finally{await browser.close();}
+});
+test('cached switching is synchronous; a running turn freezes every visible metric',async()=>{
+ const browser=await chromium.launch({channel:'chrome',headless:true});try{
+  const page=await browser.newPage();await page.clock.install();await page.setContent(fixtureHTML());
+  await page.evaluate(({d,id})=>window.__BOSS_CONTEXT_PANEL_SEED__=[d,{...d,threadId:id,used:200000,percent:42.1}],{d:demo,id:ID2});await page.addScriptTag({content:widget});
+  const panel=page.locator('#boss-context-panel');await panel.locator('.toggle').click();
+  const before=await panel.textContent();
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update({...d,turnActive:true,used:250000,percent:52.6,quota:{status:'ready',fiveHour:{usedPercent:99}},activity:{todayTokens:999}}),demo);
+  await page.clock.fastForward(4000);assert.equal(await panel.textContent(),before);
+  await page.evaluate(id=>document.querySelector('[data-above-composer-conversation-id]').setAttribute('data-above-composer-conversation-id',id),ID2);
+  assert.equal(await panel.locator('.pill').textContent(),'42.1%');
+  await page.evaluate(id=>document.querySelector('[data-above-composer-conversation-id]').setAttribute('data-above-composer-conversation-id',id),ID);
+  assert.equal(await panel.textContent(),before);
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update({...d,turnActive:false,used:250000,percent:52.6}),demo);assert.equal(await panel.locator('.pill').textContent(),'52.6%');
+  await page.evaluate(id=>window.__BOSS_CONTEXT_PANEL__.update({threadId:id,status:'read_error'}),ID);assert.equal(await panel.locator('.pill').textContent(),'52.6%');
+  await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.dispose());
  }finally{await browser.close();}
 });

@@ -13,5 +13,5 @@ export class CDP {
   async evaluate(expression){const result=await this.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(result.exceptionDetails)throw Error('面板脚本执行失败');return result.result?.value;}
   close(){this.ws?.close();this.closed=true;}
 }
-export function isAppTarget(t){try{const u=new URL(t.url),r=u.searchParams.get('initialRoute');return t.type==='page'&&u.protocol==='app:'&&['-','codex'].includes(u.hostname)&&u.pathname==='/index.html'&&(!r||/^\/local\/[0-9a-f-]+\/?$/i.test(r));}catch{return false;}}
+export function isAppTarget(t){try{const u=new URL(t.url),r=u.searchParams.get('initialRoute');return t.type==='page'&&u.protocol==='app:'&&['-','codex'].includes(u.hostname)&&((u.pathname==='/index.html'&&(!r||/^\/local\/[0-9a-f-]+\/?$/i.test(r)))||(u.pathname==='/detached-window.html'&&r==='/detached-window'));}catch{return false;}}
 export async function targets(port){const r=await fetch(`http://127.0.0.1:${port}/json/list`,{redirect:'error',signal:AbortSignal.timeout(1500)});return (await r.json()).filter(isAppTarget);}

@@ -38,6 +38,7 @@ export class SessionScanner {
     this.instructions=new Map();this.latest=null;this.snapshot=new Map();this.model=null;this.window=null;
     this.sessionId=null;this.compactions=0;this.parseErrors=0;this.updatedAt=null;this.pendingCompaction=false;
     this.seenMeta=false;this.identity=null;this.snapshotModel=null;this.pendingModel=false;
+    this.turnActive=false;this.committed=null;
   }
   response(p) {
     if(p.type==='message') {
@@ -65,6 +66,13 @@ export class SessionScanner {
   }
   ingest(o) {
     const p=o.payload||{};
+    if(o.type==='event_msg'&&p.type==='task_started'){
+      if(!this.turnActive)this.committed=this.liveReport(this.sessionId);
+      this.turnActive=true;return;
+    }
+    if(o.type==='event_msg'&&['task_complete','task_completed','turn_aborted','task_aborted'].includes(p.type)){
+      this.turnActive=false;this.committed=this.liveReport(this.sessionId);return;
+    }
     if(o.type==='session_meta') {
       this.sessionId=String(p.id||p.session_id||'').toLowerCase();this.seenMeta=true;
       this.base=splitInstructions(p.base_instructions?.text||'');
@@ -119,6 +127,13 @@ export class SessionScanner {
   }
   report(expectedId) {
     if(this.sessionId!==expectedId)return {status:'identity_mismatch',threadId:expectedId};
+    // A request is not a turn: tool calls emit intermediate token_count records.
+    // Retain the completed-turn snapshot through model changes and compaction.
+    const view=this.turnActive?this.committed:this.liveReport(expectedId);
+    return {...view,threadId:expectedId,turnActive:this.turnActive};
+  }
+  liveReport(expectedId) {
+    if(this.sessionId!==expectedId)return {status:'identity_mismatch',threadId:expectedId};
     const known=this.latest&&!this.pendingCompaction&&!this.pendingModel;
     const used=known?this.latest.total:null,window=positive(this.window);
     const bytes=[...this.snapshot.values()].reduce((a,b)=>a+b,0);
@@ -138,8 +153,12 @@ export class SessionScanner {
 }
 
 export class SessionStore {
-  constructor(home=process.env.CODEX_HOME||path.join(os.homedir(),'.codex')){this.home=home;this.index=new Map();this.scanners=new Map();this.indexAt=0;}
+  constructor(home=process.env.CODEX_HOME||path.join(os.homedir(),'.codex')){this.home=home;this.index=new Map();this.scanners=new Map();this.reports=new Map();this.stamps=new Map();this.pending=new Map();this.indexAt=0;}
   async reindex(){
+    if(this.indexing)return this.indexing;
+    this.indexing=this.scanIndex();try{await this.indexing;}finally{this.indexing=null;}
+  }
+  async scanIndex(){
     const index=new Map();
     for(const folder of ['sessions','archived_sessions']) {
       const root=path.join(this.home,folder);let files=[];try{files=await fs.readdir(root,{recursive:true});}catch{}
@@ -150,11 +169,23 @@ export class SessionStore {
   }
   async get(id){
     if(!UUID.test(id||''))return {status:'no_thread',threadId:null};id=id.toLowerCase();
+    if(this.pending.has(id))return this.pending.get(id);
+    const work=this.read(id);this.pending.set(id,work);try{return await work;}finally{this.pending.delete(id);}
+  }
+  async read(id){
     if(!this.indexAt||(!this.index.has(id)&&Date.now()-this.indexAt>5000))await this.reindex();
     const file=this.index.get(id);if(!file)return {status:'not_found',threadId:id};
+    let stamp;try{const stat=await fs.stat(file);stamp=[file,stat.dev,stat.ino,stat.size,stat.mtimeMs].join(':');if(this.stamps.get(id)===stamp&&this.reports.has(id))return this.reports.get(id);}catch{return this.reports.get(id)||{status:'read_error',threadId:id};}
     let scanner=this.scanners.get(id);if(!scanner||scanner.file!==file){scanner=new SessionScanner(file);this.scanners.set(id,scanner);}
     // Only retain counters for a bounded set of recently viewed sessions.
     this.scanners.delete(id);this.scanners.set(id,scanner);if(this.scanners.size>12)this.scanners.delete(this.scanners.keys().next().value);
-    try{await scanner.refresh();return scanner.report(id);}catch{return {status:'read_error',threadId:id};}
+    try{await scanner.refresh();const report=scanner.report(id);this.reports.delete(id);this.reports.set(id,report);this.stamps.set(id,stamp);if(this.reports.size>256){const oldest=this.reports.keys().next().value;this.reports.delete(oldest);this.stamps.delete(oldest);}return report;}catch{return this.reports.get(id)||{status:'read_error',threadId:id};}
+  }
+  async prewarm(limit=128){
+    if(!this.indexAt||Date.now()-this.indexAt>10000)await this.reindex();
+    const files=await Promise.all([...this.index].map(async([id,file])=>{try{return {id,mtime:(await fs.stat(file)).mtimeMs};}catch{return null;}}));
+    const recent=files.filter(Boolean).sort((a,b)=>b.mtime-a.mtime).slice(0,limit);
+    // Yield between sessions so a newly selected thread never queues behind warmup.
+    for(const {id}of recent){await this.get(id);await new Promise(resolve=>setTimeout(resolve,0));}
   }
 }

@@ -1,5 +1,5 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.4.0',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.5.0',STORE='boss-context-panel-ui-v2';
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();
   const UUID=/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i;
@@ -28,7 +28,18 @@
   @container(max-width:350px){.toggle{gap:7px;padding-inline:7px}.token-usage{font-size:13px}.metric-value{font-size:17px}.top-summary{gap:16px}.body{padding:12px}.totals{gap:8px}.quota-details{gap:12px}.quota-number{font-size:21px}}
   @media(prefers-reduced-motion:no-preference){.chevron{transition:transform .16s ease}.bar i{transition:width .25s ease}}
   </style><section class="surface" aria-label="当前聊天上下文用量"><button class="toggle" aria-label="展开上下文详情" aria-expanded="false" aria-controls="context-details"><span class="label">上下文</span><span class="pill">等待数据</span><span class="token-usage">已用 — / — · 剩余 —</span><span class="quick"><span>5小时剩余</span><span class="quota-pill">—</span></span><svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button><div class="body" id="context-details" hidden></div></section>`;
+  const cache=new Map(),frozen=new Set();
   let current=null,last=null,renderKey=null,destroyed=false,lastPing=Date.now(),offline=false;
+  function remember(data){
+    if(!data?.threadId)return;
+    const id=data.threadId,previous=cache.get(id);
+    if(data.turnActive){frozen.add(id);if(previous)return;}
+    else frozen.delete(id);
+    if(previous?.status==='ready'&&['read_error','not_found','waiting','compacting'].includes(data.status))return;
+    cache.delete(id);cache.set(id,data);if(cache.size>256)cache.delete(cache.keys().next().value);
+  }
+  for(const data of window.__BOSS_CONTEXT_PANEL_SEED__||[])remember(data);
+  delete window.__BOSS_CONTEXT_PANEL_SEED__;
   const el=s=>root.querySelector(s);
   const active=n=>!n.closest('[data-app-shell-active-page="false"],[aria-hidden="true"],[inert]');
   function locate(){
@@ -86,13 +97,14 @@
   }
   const statuses={waiting:'等待本聊天的首次用量记录',compacting:'上下文已压缩，等待新的用量记录',not_found:'未找到本聊天的本机日志',read_error:'暂时无法读取本聊天日志',identity_mismatch:'聊天标识不匹配，已停止显示'};
   function render(data){
-    if(destroyed)return;const id=mount();if(id!==current){current=id;last=null;renderKey=null;}if(!id)return;
-    if(data?.threadId===id){last=data;lastPing=Date.now();if(offline){offline=false;renderKey=null;}}
+    if(destroyed)return;if(data)remember(data);const id=mount();if(id!==current){current=id;last=cache.get(id)||null;renderKey=null;}if(!id)return;
+    last=cache.get(id)||last;
+    if(data?.threadId===id){lastPing=Date.now();if(offline){offline=false;renderKey=null;}}
     const d=last||{status:'waiting',threadId:id},key=JSON.stringify(d);if(key===renderKey){theme();return;}renderKey=key;
     const body=el('.body'),scroll=body.scrollTop,explainOpen=el('details')?.open;body.replaceChildren();
     const accent=d.percent>=85?'var(--color-text-danger-surface,#fa423e)':d.percent>=70?'var(--color-text-warning-surface,#fb6a22)':null;
     if(accent)host.style.setProperty('--accent',accent);else host.style.removeProperty('--accent');
-    el('.pill').textContent=d.percent==null?(d.status==='ready'?'容量未知':'等待数据'):pc(d.percent);
+    el('.pill').textContent=d.percent==null?(d.status==='ready'?'容量未知':'暂无记录'):pc(d.percent);
     globalSummary(d);
     el('.toggle').title=`上下文已用 ${pc(d.percent)} · 当前窗口已用 ${exact(d.used)} Token · 5小时额度剩余 ${quotaRemaining(d.quota?.fiveHour)}`;
     if(d.status!=='ready'){body.append(node('div','status',statuses[d.status]||'等待本聊天数据'));globalDetails(body,d);}
@@ -106,14 +118,14 @@
       body.append(node('div','separator'));const meta=node('div','meta');meta.append(node('span','','自动压缩预留 · 未知'),node('span','','已压缩 '+(d.compactions||0)+' 次'));body.append(meta);
     }
     body.append(node('div','separator'));const details=node('details','foot'),summary=node('summary');summary.append(node('span','','数据说明'),node('span','','⌄'));details.append(summary,node('div','explain','窗口已用总量包含最近请求的输入与输出，容量采用同一条用量记录。分类按可观察内容估算，不是官方逐项计数；未记录不等于零。自动压缩预留未知，剩余容量不代表距离压缩的精确余量。'));details.open=!!explainOpen;body.append(details);
-    const stamp=d.updatedAt?new Date(d.updatedAt).toLocaleTimeString('zh-CN',{hour12:false}):'等待更新';const footer=node('div','meta stamp');footer.append(node('span','','聊天 '+id.slice(0,8)),node('span','',stamp+' · 随请求记录更新'));footer.title=id;body.append(footer);
+    const stamp=d.updatedAt?new Date(d.updatedAt).toLocaleTimeString('zh-CN',{hour12:false}):'暂无记录';const footer=node('div','meta stamp');footer.append(node('span','','聊天 '+id.slice(0,8)),node('span','',stamp+' · 对话结束后更新'));footer.title=id;body.append(footer);
     if(d.parseErrors)body.append(node('div','stamp','有 '+d.parseErrors+' 条日志无法解析，分类可能不完整'));
     body.scrollTop=scroll;theme();expansion();
   }
-  function sync(){if(destroyed)return;const id=mount();if(id!==current){current=id;last=null;renderKey=null;render(null);}scheduleLayout();}
+  function sync(){if(destroyed)return;const id=mount();if(id!==current)render(null);scheduleLayout();}
   const observer=new MutationObserver(sync);observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['data-app-shell-active-page','data-above-composer-conversation-id','data-conversation-id','aria-hidden','inert']});
-  const timer=setInterval(()=>{sync();if(last)globalSummary(last);if(current&&last&&!offline&&Date.now()-lastPing>12000){offline=true;renderKey=null;el('.pill').textContent='连接已断开';el('.body').prepend(node('div','status offline','本机连接已断开，以下为上次记录'));}if(host.isConnected)theme();},2000);
+  const timer=setInterval(()=>{sync();if(last&&!frozen.has(current))globalSummary(last);if(current&&last&&!offline&&Date.now()-lastPing>12000){offline=true;renderKey=null;el('.toggle').title='本机连接已断开，保留上次记录';el('.body').prepend(node('div','status offline','本机连接已断开，以下为上次记录'));}if(host.isConnected)theme();},2000);
   window.addEventListener('resize',layout);
-  window[KEY]={version:VERSION,select,update:render,dispose(){destroyed=true;observer.disconnect();clearInterval(timer);if(layoutFrame!=null)cancelAnimationFrame(layoutFrame);window.removeEventListener('resize',layout);host.remove();delete window[KEY];}};
+  window[KEY]={version:VERSION,select,update:render,updateBatch(data){for(const item of data)remember(item);render(null);lastPing=Date.now();if(offline){offline=false;renderKey=null;render(null);}},dispose(){destroyed=true;observer.disconnect();clearInterval(timer);if(layoutFrame!=null)cancelAnimationFrame(layoutFrame);window.removeEventListener('resize',layout);host.remove();delete window[KEY];}};
   sync();render(null);
 })()

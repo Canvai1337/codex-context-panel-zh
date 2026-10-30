@@ -22,25 +22,29 @@ function refreshGlobal(){
 }
 const stateDir=process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'CodexContextPanel'):path.join(here,'runtime');
 await fs.mkdir(stateDir,{recursive:true});
-let stopping=false,lastReady=Date.now();
-async function state(value){const tmp=path.join(stateDir,`status-${process.pid}.tmp`);await fs.writeFile(tmp,JSON.stringify({version:'1.4.0',pid:process.pid,port,updatedAt:new Date().toISOString(),...value}));await fs.rename(tmp,path.join(stateDir,'status.json'));}
+let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;
+function warm(){if(warming||Date.now()-warmAt<10000)return;warming=true;warmAt=Date.now();store.prewarm().catch(()=>{}).finally(()=>{warming=false;});}
+async function state(value){const tmp=path.join(stateDir,`status-${process.pid}.tmp`);await fs.writeFile(tmp,JSON.stringify({version:'1.5.0',pid:process.pid,port,updatedAt:new Date().toISOString(),...value}));await fs.rename(tmp,path.join(stateDir,'status.json'));}
 async function tick(){
   refreshGlobal();
+  warm();
   let list;try{list=await targets(port);}catch{list=[];}
   const ids=new Set(list.map(t=>t.id));
   for(const [id,c]of connections)if(!ids.has(id)||c.closed){c.close();connections.delete(id);}
-  for(const target of list){
+  await Promise.all(list.map(async target=>{
     let c=connections.get(target.id);
     try{
       if(!c){c=await new CDP(target).open();connections.set(target.id,c);}
-      await c.evaluate(widget);
+      const cached=[...store.reports.values()].map(data=>({...data,quota,activity:usage.view}));
+      await c.evaluate(`if(window.__BOSS_CONTEXT_PANEL__?.version!=='1.5.0')window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(cached)};\n${widget}`);
       const threadId=await c.evaluate('window.__BOSS_CONTEXT_PANEL__?.select()||null');
       const data={...await store.get(threadId),quota,activity:usage.view};
-      await c.evaluate(`window.__BOSS_CONTEXT_PANEL__?.update(${JSON.stringify(data)})`);
+      const batch=[...cached.filter(d=>d.threadId!==threadId),data];
+      await c.evaluate(`window.__BOSS_CONTEXT_PANEL__?.updateBatch(${JSON.stringify(batch)})`);
       lastReady=Date.now();
     }catch{c?.close();connections.delete(target.id);}
-  }
-  await state({phase:connections.size?'connected':'waiting',windows:connections.size,quotaStatus:quota.status,quotaFetchedAt:quota.fetchedAt,usageStatus:usage.view.status,tokenUpdatedAt:usage.view.updatedAt});
+  }));
+  await state({phase:connections.size?'connected':'waiting',windows:connections.size,cachedThreads:store.reports.size,quotaStatus:quota.status,quotaFetchedAt:quota.fetchedAt,usageStatus:usage.view.status,tokenUpdatedAt:usage.view.updatedAt});
 }
 for(const event of ['SIGTERM','SIGINT'])process.on(event,()=>{stopping=true;for(const c of connections.values())c.close();});
 while(!stopping){try{await tick();}catch{}if(Date.now()-lastReady>180000)break;await new Promise(r=>setTimeout(r,2000));}

@@ -19,6 +19,7 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   const file=path.join(dataHome,'sessions',`rollout-${ID}.jsonl`);
   const usage=n=>record('event_msg',{type:'token_count',info:{last_token_usage:{input_tokens:n,output_tokens:0,total_tokens:n},model_context_window:1000}});
   await fs.writeFile(file,record('session_meta',{id:ID})+record('response_item',{type:'message',role:'user',content:[{text:'测试消息'}]})+usage(100));
+  await fs.writeFile(path.join(dataHome,'sessions',`rollout-${ID2}.jsonl`),record('session_meta',{id:ID2})+usage(330));
   const profile=path.join(dir,'chrome');context=await chromium.launchPersistentContext(profile,{channel:'chrome',headless:true,args:['--remote-debugging-port=0']});
   const active=await fs.readFile(path.join(profile,'DevToolsActivePort'),'utf8');const realPort=Number(active.split('\n')[0]);
   // Only the test metadata is mapped to the app URL. No production app is touched.
@@ -30,11 +31,12 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   const pill=()=>page.locator('#boss-context-panel .pill').textContent().catch(()=>null);
   await until(async()=>String(await pill()).includes('10.0%'));assert.equal(stderr,'');
   await fs.appendFile(file,usage(220));await until(async()=>String(await pill()).includes('22.0%'));
+  await fs.appendFile(file,record('event_msg',{type:'task_started'})+usage(440));await wait(2600);assert.equal(await pill(),'22.0%');
+  await fs.appendFile(file,record('event_msg',{type:'task_complete'}));await until(async()=>String(await pill()).includes('44.0%'));
   await page.evaluate(id=>document.querySelector('[data-above-composer-conversation-id]').setAttribute('data-above-composer-conversation-id',id),ID2);
-  await until(async()=>String(await pill()).includes('等待'));assert(!String(await pill()).includes('22.0%'));
-  await until(async()=>(await page.locator('#boss-context-panel .body').textContent()).includes('未找到本聊天'));
+  assert.equal(await pill(),'33.0%');
   await page.close();page=await context.newPage();await page.setContent(fixtureHTML());
-  await until(async()=>String(await pill()).includes('22.0%'));
+  await until(async()=>String(await pill()).includes('44.0%'));
   const status=JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8'));assert.equal(status.phase,'connected');
  }finally{
   if(daemon){daemon.kill();await new Promise(r=>{if(daemon.exitCode!==null)return r();daemon.once('exit',r);setTimeout(r,3000);});}

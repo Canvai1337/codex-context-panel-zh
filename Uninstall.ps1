@@ -5,6 +5,8 @@ $installPath=[IO.Path]::GetFullPath($PSScriptRoot)
 $expected=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel'))+[IO.Path]::DirectorySeparatorChar
 if(-not $installPath.StartsWith($expected,[StringComparison]::OrdinalIgnoreCase)){throw '仅可从已安装的 CodexContextPanel 版本目录卸载'}
 $daemon=Join-Path $installPath 'daemon.mjs'
+. (Join-Path $PSScriptRoot 'Shortcuts.ps1')
+Restore-PanelShortcuts -InstallRoot $installPath
 Get-CimInstance Win32_Process -Filter "Name='node.exe'"|Where-Object {$_.CommandLine -and $_.CommandLine.Contains($daemon)}|ForEach-Object {
   $daemonId=$_.ProcessId
   Get-CimInstance Win32_Process -Filter "ParentProcessId=$daemonId" | Where-Object {$_.Name -eq 'codex.exe' -and $_.CommandLine -match 'app-server.*stdio://'} | ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue}

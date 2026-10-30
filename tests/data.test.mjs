@@ -45,6 +45,24 @@ test('world-state hashes and encrypted reasoning are excluded; counters freeze a
 test('only main app and popped-out task renderer targets are eligible',()=>{
  assert(isAppTarget({type:'page',url:'app://-/index.html'}));assert(isAppTarget({type:'page',url:`app://-/index.html?initialRoute=/local/${ID}`}));
  assert(!isAppTarget({type:'page',url:'app://-/index.html?initialRoute=/avatar-overlay'}));assert(!isAppTarget({type:'page',url:'https://chatgpt.com'}));
+ assert(isAppTarget({type:'page',url:'app://-/detached-window.html?initialRoute=%2Fdetached-window'}));
+ assert(!isAppTarget({type:'page',url:'app://-/detached-window.html?initialRoute=/avatar-overlay'}));
+});
+test('tool requests and compaction retain the completed turn until task_complete or abort',()=>{
+ const s=new SessionScanner('unused');s.ingest({type:'session_meta',payload:{id:ID}});s.ingest(JSON.parse(usage(100)));
+ const event=type=>s.ingest({type:'event_msg',payload:{type}});
+ event('task_started');s.ingest(JSON.parse(usage(200)));assert.equal(s.report(ID).used,100);assert.equal(s.report(ID).turnActive,true);
+ s.ingest({type:'compacted',payload:{message:'摘要'}});assert.equal(s.report(ID).used,100);assert.equal(s.report(ID).status,'ready');
+ s.ingest(JSON.parse(usage(50)));event('task_complete');assert.equal(s.report(ID).used,50);assert.equal(s.report(ID).turnActive,false);
+ event('task_started');s.ingest(JSON.parse(usage(70)));event('turn_aborted');assert.equal(s.report(ID).used,70);
+});
+test('background warmup loads unselected sessions and discovers a newly created log',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ctx-warm-'));try{
+  await fs.mkdir(path.join(dir,'sessions'));const file=id=>path.join(dir,'sessions',`rollout-${id}.jsonl`);
+  await fs.writeFile(file(ID),record('session_meta',{id:ID})+usage(100));const store=new SessionStore(dir);await store.prewarm();assert.equal(store.reports.get(ID).used,100);
+  await fs.writeFile(file(ID2),record('session_meta',{id:ID2})+usage(200));store.indexAt=0;await store.prewarm();assert.equal(store.reports.get(ID2).used,200);
+  const scanner=store.scanners.get(ID);await store.prewarm();assert.equal(store.scanners.get(ID),scanner);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 test('a model change waits for the new model usage instead of reusing old capacity',()=>{
  const s=new SessionScanner('unused');s.ingest({type:'session_meta',payload:{id:ID}});s.ingest({type:'turn_context',payload:{model:'model-a'}});s.ingest(JSON.parse(usage()));assert.equal(s.report(ID).used,100);
