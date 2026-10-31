@@ -1,6 +1,6 @@
 {
   "name": "codex-context-panel-zh",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "private": true,
   "description": "Windows Codex 中文状态栏：上下文、Token 与账户剩余额度",
   "license": "MIT",

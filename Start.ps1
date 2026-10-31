@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param([switch]$NoMessage,[switch]$NoActivate)
 $ErrorActionPreference='Stop'
-$stateRoot=Join-Path $env:LOCALAPPDATA 'CodexContextPanel'
+. (Join-Path $PSScriptRoot 'NativeStartup.ps1')
+$stateRoot=Get-PanelStateRoot
 $config=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'install-config.json') -Raw -Encoding UTF8|ConvertFrom-Json
 $mutex=[Threading.Mutex]::new($false,'Local\BossCodexContextPanelLauncher')
 $locked=$false
@@ -44,7 +45,11 @@ namespace PanelActivation {
     # Keep rediscovering the port after renderer / application handover.
     $arguments=@($daemonArgument,'--owner-pid',"$($applicationProcess.ProcessId)")
     if($portFile){$arguments+=@('--port-file',('"'+$portFile+'"'))}else{$arguments+=@('--port',"$port")}
-    Start-Process -FilePath $config.nodePath -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden|Out-Null
+    $previousState=$env:CODEX_PANEL_STATE_DIR
+    try{
+      $env:CODEX_PANEL_STATE_DIR=$stateRoot
+      Start-Process -FilePath $config.nodePath -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden|Out-Null
+    }finally{$env:CODEX_PANEL_STATE_DIR=$previousState}
   }
 }catch{
   New-Item -ItemType Directory -Force -Path $stateRoot|Out-Null

@@ -29,7 +29,7 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
   let page=context.pages()[0];await page.setContent(fixtureHTML());
   const portFile=path.join(dir,'panel-port');
-  daemon=spawn(process.execPath,[path.resolve(here,'../service.mjs'),'--port-file',portFile,'--owner-pid',String(process.pid)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
+  daemon=spawn(process.execPath,[path.resolve(here,'../service.mjs'),'--port-file',portFile,'--owner-pid',String(process.pid)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',CODEX_PANEL_STATE_DIR:path.join(dir,'local','CodexContextPanel'),LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
   let stderr='';daemon.stderr.on('data',b=>stderr+=b.toString());
   const pill=()=>page.locator('#boss-context-panel .pill').textContent().catch(()=>null);
   await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8')).phase==='starting';}catch{return false;}});

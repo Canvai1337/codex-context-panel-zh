@@ -5,11 +5,11 @@ import {SessionStore} from './data.mjs';
 import {CDP,targets} from './cdp.mjs';
 import {AccountClient,normalizeQuota} from './account.mjs';
 import {LocalUsage} from './usage.mjs';
-import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics} from './runtime.mjs';
+import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics,stateDirectory} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const options=runtimeOptions();let port=options.port;
-const VERSION='1.6.1';
-const stateDir=process.env.CODEX_PANEL_STATE_DIR||(process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'CodexContextPanel'):path.join(here,'runtime'));
+const VERSION='1.6.2';
+const stateDir=stateDirectory();
 const supervised=process.env.CODEX_PANEL_SUPERVISED==='1'&&typeof process.send==='function';
 const lease=supervised?null:await acquireRuntime(stateDir);if(!supervised&&!lease)process.exit(0);
 const log=diagnostics(stateDir);
@@ -27,7 +27,7 @@ function refreshGlobal(){
   }
   if(!usagePending&&(!usageAt||now-usageAt>=10000)){usagePending=true;usageAt=now;usage.refresh().catch(()=>{usage.view={...usage.view,status:'unavailable',todayTokens:null,weekTokens:null};}).finally(()=>{usagePending=false;});}
 }
-let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;
+let stopping=false,lastReady=Date.now(),warmAt=0,warming=false;const bootAt=Date.now();
 function warm(){if(warming||Date.now()-warmAt<10000)return;warming=true;warmAt=Date.now();store.prewarm().catch(()=>{}).finally(()=>{warming=false;});}
 async function state(value){await writeState(path.join(stateDir,'status.json'),{version:VERSION,pid:process.pid,supervisorPid:supervised?process.ppid:null,port,ownerPid:options.ownerPid,updatedAt:new Date().toISOString(),...value});heartbeat(value.phase);}
 async function tick(){
@@ -37,7 +37,10 @@ async function tick(){
   }
   if(port===null){
     port=await portFromFile(options.portFile);
-    if(port===null){await state({phase:'starting',windows:0});return;}
+    if(port===null){
+      if(Date.now()-bootAt>10000)await log('port-file-wait',Error('接入端口文件不可用：'+options.portFile));
+      await state({phase:'starting',windows:0,reason:'port-file-unavailable',portFile:options.portFile});return;
+    }
     await writeState(path.join(stateDir,'runtime.json'),{version:VERSION,port,daemonPid:process.pid,ownerPid:options.ownerPid,installRoot:here,startedAt:new Date().toISOString()});
   }
   let list;try{list=await targets(port);}catch{list=[];}

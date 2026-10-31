@@ -4,10 +4,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
-import {runtimeOptions,portFromFile,acquireRuntime} from '../runtime.mjs';
+import {runtimeOptions,portFromFile,acquireRuntime,stateDirectory} from '../runtime.mjs';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function exit(child,timeout=5000){if(child.exitCode!==null)return child.exitCode;return Promise.race([new Promise(r=>child.once('exit',r)),wait(timeout).then(()=>{throw Error('child exit timeout');})]);}
 test('runtime validates arguments and the Chromium port-file format',async()=>{
+ assert.equal(stateDirectory({LOCALAPPDATA:'fixture'}),path.join('fixture','Packages','OpenAI.Codex_2p2nqsd0c76g0','LocalCache','Local','CodexContextPanel'));
+ assert.equal(stateDirectory({LOCALAPPDATA:'fixture',CODEX_PANEL_STATE_DIR:'explicit'}),'explicit');
  assert.equal(runtimeOptions(['--port','9340']).port,9340);
  assert.throws(()=>runtimeOptions(['--port','0']));assert.throws(()=>runtimeOptions(['--owner-pid','-1','--port','9340']));assert.throws(()=>runtimeOptions(['--unknown','x']));assert.throws(()=>runtimeOptions([]));
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'panel-port-'));try{

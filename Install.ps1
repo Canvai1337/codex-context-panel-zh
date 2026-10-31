@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([string]$InstallRoot=(Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel\1.6.1'),[Alias('SkipShortcut')][switch]$SkipIntegration)
+param([string]$InstallRoot=(Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel\1.6.2'),[Alias('SkipShortcut')][switch]$SkipIntegration)
 $ErrorActionPreference='Stop'
 $nodePath=(Get-Command node -ErrorAction Stop).Source
 $cliPath=(Get-Command codex -ErrorAction Stop).Source
@@ -13,19 +13,19 @@ foreach($file in $files){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) 
 $bridge=Join-Path $PSScriptRoot 'StartupBridge.exe'
 if(-not (Test-Path -LiteralPath $bridge)){$bridge=& (Join-Path $PSScriptRoot '.code\Build-Native.ps1')}
 Copy-Item -LiteralPath $bridge -Destination (Join-Path $InstallRoot 'StartupBridge.exe') -Force
-@{version='1.6.1';startupMode='native';nodePath=$nodePath;cliPath=$cliPath;desktopPath=$desktopPath}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $InstallRoot 'install-config.json') -Encoding utf8
+@{version='1.6.2';startupMode='native';nodePath=$nodePath;cliPath=$cliPath;desktopPath=$desktopPath}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $InstallRoot 'install-config.json') -Encoding utf8
 if(-not $SkipIntegration){
   . (Join-Path $InstallRoot 'NativeStartup.ps1')
   Enable-PanelNativeStartup $InstallRoot
   . (Join-Path $PSScriptRoot 'Shortcuts.ps1')
-  $stateRoot=Join-Path $env:LOCALAPPDATA 'CodexContextPanel'
+  $stateRoot=Get-PanelStateRoot
   $shortcutRecord=Join-Path $stateRoot 'shortcut-backups.json'
   $restored=@()
   if(Test-Path -LiteralPath $shortcutRecord){
     $records=Get-Content -LiteralPath $shortcutRecord -Raw|ConvertFrom-Json
     foreach($record in $records){
       if(Test-Path -LiteralPath $record.backup){$restored+=[PSCustomObject]@{path=$record.path;sha256=(Get-FileHash -LiteralPath $record.backup -Algorithm SHA256).Hash}}
-      Restore-PanelShortcuts -InstallRoot $record.installRoot
+      Restore-PanelShortcuts -InstallRoot $record.installRoot -StateRoot $stateRoot
     }
     if($restored.Count){Write-PanelJson (Join-Path $stateRoot 'restored-shortcuts.json') $restored}
   }

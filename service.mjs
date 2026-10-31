@@ -2,7 +2,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fork,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {runtimeOptions,ownerAlive,acquireRuntime,writeState,diagnostics} from './runtime.mjs';
+import {runtimeOptions,ownerAlive,acquireRuntime,writeState,diagnostics,stateDirectory} from './runtime.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -28,7 +28,7 @@ export async function supervise({stateDir,ownerPid,args,workerFile=path.join(her
   let stopping=false,child=null,restarts=0,lastBeat=0,startedAt=0,failures=0,lastPhase='starting';
   const stop=()=>{stopping=true;};
   process.on('SIGINT',stop);process.on('SIGTERM',stop);
-  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.6.1',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
+  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.6.2',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
   try{
     while(!stopping&&ownerAlive(ownerPid)){
       startedAt=lastBeat=Date.now();lastPhase='starting';
@@ -58,7 +58,7 @@ export async function supervise({stateDir,ownerPid,args,workerFile=path.join(her
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const options=runtimeOptions();
-  const stateDir=process.env.CODEX_PANEL_STATE_DIR||path.join(process.env.LOCALAPPDATA||here,'CodexContextPanel');
+  const stateDir=stateDirectory();
   try{await supervise({stateDir,ownerPid:options.ownerPid,args:process.argv.slice(2)});}
   catch(error){await diagnostics(stateDir,'service-error.log')('service-fatal',error);process.exitCode=1;}
 }

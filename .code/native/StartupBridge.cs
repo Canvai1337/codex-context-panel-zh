@@ -201,7 +201,7 @@ internal static class StartupBridge
         if (GetProcessIdOfThread(thread) != pid) { CloseHandle(thread); return 4; }
         IntPtr process = IntPtr.Zero; Config config = null; string portFile = null, failure = null;
         Stopwatch elapsed = Stopwatch.StartNew();
-        string stateRoot = Environment.GetEnvironmentVariable("CODEX_PANEL_STATE_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexContextPanel");
+        string stateRoot = Environment.GetEnvironmentVariable("CODEX_PANEL_STATE_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "OpenAI.Codex_2p2nqsd0c76g0", "LocalCache", "Local", "CodexContextPanel");
         try
         {
             uint suspendCount; int returned;

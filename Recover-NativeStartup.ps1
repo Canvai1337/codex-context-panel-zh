@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param([string]$StateRoot)
 $ErrorActionPreference='Stop'
-if(-not $StateRoot){$StateRoot=Join-Path $env:LOCALAPPDATA 'CodexContextPanel'}
+if(-not $StateRoot){$StateRoot=Join-Path $env:LOCALAPPDATA 'Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexContextPanel'}
 $recordPath=Join-Path $StateRoot 'native-startup.json'
 if(-not (Test-Path -LiteralPath $recordPath)){Write-Output '未启用原生启动接入。';return}
 $record=Get-Content -LiteralPath $recordPath -Raw -Encoding UTF8|ConvertFrom-Json

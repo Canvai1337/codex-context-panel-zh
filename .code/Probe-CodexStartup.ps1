@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([string]$WorkRoot,[switch]$WithService)
+param([string]$WorkRoot,[switch]$WithService,[switch]$UsePackageCache)
 $ErrorActionPreference='Stop'
 if(-not $WorkRoot){$WorkRoot=Join-Path $PSScriptRoot '..\outputs\native-codex-probe'}
 $WorkRoot=[IO.Path]::GetFullPath($WorkRoot)
@@ -19,6 +19,7 @@ $env:CODEX_HOME=Join-Path $WorkRoot 'codex'
 $env:CODEX_PANEL_DISABLE_ACCOUNT='1'
 $block=[string]::Join("`0",@($environment.Keys|Sort-Object|ForEach-Object {$_+'='+$environment[$_]}))+"`0`0"
 $profile=Join-Path $WorkRoot 'web'
+if($UsePackageCache){$profile=Join-Path $env:LOCALAPPDATA ("Packages\$($package.PackageFamilyName)\LocalCache\Roaming\CodexContextPanel-Probe\"+[guid]::NewGuid().ToString('N'))}
 $command='"'+$executable+'" "--user-data-dir='+$profile+'" --no-first-run --no-startup-window'
 $target=[PanelFixtureProcess]::Start($executable,$command,$block)
 try{
@@ -33,7 +34,7 @@ try{
         $response=Invoke-WebRequest -Uri "http://127.0.0.1:$port/json/list" -TimeoutSec 2 -UseBasicParsing
         $targets=$response.Content|ConvertFrom-Json
         if(@($targets|Where-Object {$_.url -match '^app://(-|codex)/index\.html'}).Count){
-          [PSCustomObject]@{nativeCodex='PASS';pid=$target.pid;port=$port;httpStatus=$response.StatusCode;explicitDebugArgument=$false;startup=(Get-Content -LiteralPath (Join-Path $WorkRoot 'state\startup-status.json') -Raw|ConvertFrom-Json)}|ConvertTo-Json -Depth 5
+          [PSCustomObject]@{nativeCodex='PASS';pid=$target.pid;port=$port;profile=$profile;httpStatus=$response.StatusCode;explicitDebugArgument=$false;startup=(Get-Content -LiteralPath (Join-Path $WorkRoot 'state\startup-status.json') -Raw|ConvertFrom-Json)}|ConvertTo-Json -Depth 5
           $verified=$true;break
         }
       }catch{}

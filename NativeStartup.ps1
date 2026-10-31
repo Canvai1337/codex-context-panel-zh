@@ -3,6 +3,16 @@ param([ValidateSet('Enable','Disable','Repair','Status')][string]$Action='Repair
 $ErrorActionPreference='Stop'
 if(-not $PanelInstallRoot){$PanelInstallRoot=Split-Path -Parent $MyInvocation.MyCommand.Path}
 
+function Get-PanelStateRoot {
+  if($env:CODEX_PANEL_STATE_DIR){return $env:CODEX_PANEL_STATE_DIR}
+  return Join-Path $env:LOCALAPPDATA 'Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexContextPanel'
+}
+function Get-PanelProfile([string]$PackageFamilyName,[bool]$Owl){
+  # Explicit paths are shared by packaged Codex and the unpackaged Node service.
+  $profile=Join-Path $env:LOCALAPPDATA ("Packages\$PackageFamilyName\LocalCache\Roaming\Codex")
+  if($Owl){$profile=Join-Path $profile 'web\Codex'}
+  return $profile
+}
 function Write-PanelJson([string]$Path,$Value){
   $temporary=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
   ConvertTo-Json -InputObject $Value -Depth 8|Set-Content -LiteralPath $temporary -Encoding utf8
@@ -47,7 +57,7 @@ function Enable-PanelNativeStartup([string]$Root,[switch]$NoMaintenance){
   $expected=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel'))+[IO.Path]::DirectorySeparatorChar
   if(-not ([IO.Path]::GetFullPath($Root)).StartsWith($expected,[StringComparison]::OrdinalIgnoreCase)){throw '原生集成必须安装到当前用户的 Programs\CodexContextPanel 目录；隔离检查请使用 -SkipIntegration'}
   $package=Get-PanelPackage
-  $stateRoot=Join-Path $env:LOCALAPPDATA 'CodexContextPanel'
+  $stateRoot=Get-PanelStateRoot
   New-Item -ItemType Directory -Force -Path $stateRoot|Out-Null
   $recordPath=Join-Path $stateRoot 'native-startup.json'
   $previous=$null;if(Test-Path -LiteralPath $recordPath){$previous=Get-Content -LiteralPath $recordPath -Raw -Encoding UTF8|ConvertFrom-Json}
@@ -55,8 +65,7 @@ function Enable-PanelNativeStartup([string]$Root,[switch]$NoMaintenance){
   Copy-Item -LiteralPath (Join-Path $Root 'Recover-NativeStartup.ps1') -Destination (Join-Path $stateRoot 'Recover-NativeStartup.ps1') -Force
   $config=Get-Content -LiteralPath (Join-Path $Root 'install-config.json') -Raw -Encoding UTF8|ConvertFrom-Json
   $executable=Join-Path $package.InstallLocation 'app\ChatGPT.exe'
-  $nativeProfile=Join-Path $env:APPDATA 'Codex'
-  if(Test-Path -LiteralPath (Join-Path $package.InstallLocation 'app\resources\owl-app.ini')){$nativeProfile=Join-Path $nativeProfile 'web\Codex'}
+  $nativeProfile=Get-PanelProfile $package.PackageFamilyName (Test-Path -LiteralPath (Join-Path $package.InstallLocation 'app\resources\owl-app.ini'))
   Write-PanelJson (Join-Path $Root 'bridge-config.json') @{executablePath=$executable;nodePath=$config.nodePath;servicePath=(Join-Path $Root 'service.mjs');daemonPath=(Join-Path $Root 'daemon.mjs');stateRoot=$stateRoot;userDataDirectory=$nativeProfile;launchDaemon=$true}
   try{
     Invoke-PanelBridge $helper '--register' $package.PackageFullName
@@ -72,18 +81,18 @@ function Enable-PanelNativeStartup([string]$Root,[switch]$NoMaintenance){
   }
 }
 function Disable-PanelNativeStartup([string]$Root){
-  $recordPath=Join-Path $env:LOCALAPPDATA 'CodexContextPanel\native-startup.json'
+  $recordPath=Join-Path (Get-PanelStateRoot) 'native-startup.json'
   if(-not (Test-Path -LiteralPath $recordPath)){return}
   $record=Get-Content -LiteralPath $recordPath -Raw -Encoding UTF8|ConvertFrom-Json
   if($record.installRoot -ne $Root){return}
-  if(-not (Test-Path -LiteralPath $record.helperPath)){& (Join-Path (Split-Path $recordPath -Parent) 'Recover-NativeStartup.ps1');return}
+  if(-not (Test-Path -LiteralPath $record.helperPath)){& (Join-Path (Split-Path $recordPath -Parent) 'Recover-NativeStartup.ps1') -StateRoot (Split-Path $recordPath -Parent);return}
   $task=Get-ScheduledTask -TaskName 'CodexContextPanel-RepairStartup' -ErrorAction SilentlyContinue
   if($task -and @($task.Actions|Where-Object {$_.Arguments -and $_.Arguments.Contains($Root)}).Count){Stop-ScheduledTask -TaskName $task.TaskName -ErrorAction SilentlyContinue;Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false}
   Invoke-PanelBridge $record.helperPath '--unregister' $record.packageFullName
   Remove-Item -LiteralPath $recordPath -Force
 }
 if($MyInvocation.InvocationName -ne '.'){
-  if($Action -eq 'Status'){$record=Join-Path $env:LOCALAPPDATA 'CodexContextPanel\native-startup.json';if(Test-Path -LiteralPath $record){Get-Content -LiteralPath $record -Raw}else{Write-Output '未启用原生入口'}}
+  if($Action -eq 'Status'){$record=Join-Path (Get-PanelStateRoot) 'native-startup.json';if(Test-Path -LiteralPath $record){Get-Content -LiteralPath $record -Raw}else{Write-Output '未启用原生入口'}}
   elseif($Action -eq 'Disable'){Disable-PanelNativeStartup $PanelInstallRoot}
   else{Enable-PanelNativeStartup $PanelInstallRoot -NoMaintenance:$SkipMaintenance}
 }

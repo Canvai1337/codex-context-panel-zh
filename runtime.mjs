@@ -3,6 +3,12 @@ import path from 'node:path';
 import net from 'node:net';
 import {createHash} from 'node:crypto';
 
+export function stateDirectory(env=process.env){
+  if(env.CODEX_PANEL_STATE_DIR)return env.CODEX_PANEL_STATE_DIR;
+  if(env.LOCALAPPDATA)return path.join(env.LOCALAPPDATA,'Packages','OpenAI.Codex_2p2nqsd0c76g0','LocalCache','Local','CodexContextPanel');
+  return path.resolve('runtime');
+}
+
 export function runtimeOptions(args=process.argv.slice(2)){
   const options={port:null,portFile:null,ownerPid:null};
   for(let i=0;i<args.length;i+=2){
