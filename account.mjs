@@ -23,7 +23,7 @@ export class AccountClient {
     child.on('error',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     child.on('exit',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     createInterface({input:child.stdout,crlfDelay:Infinity}).on('line',line=>{let msg;try{msg=JSON.parse(line);}catch{return;}const p=this.pending.get(msg.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(msg.id);msg.error?p.reject(Error('额度接口未返回数据')):p.resolve(msg.result);});
-    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.6.2'},capabilities:{optOutNotificationMethods:[]}});
+    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.6.3'},capabilities:{optOutNotificationMethods:[]}});
     child.stdin.write(JSON.stringify({method:'initialized'})+'\n');
   }
   call(method,params){

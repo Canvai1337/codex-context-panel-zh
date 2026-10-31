@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fork,execFile} from 'node:child_process';
@@ -7,6 +8,22 @@ import {runtimeOptions,ownerAlive,acquireRuntime,writeState,diagnostics,stateDir
 const here=path.dirname(fileURLToPath(import.meta.url));
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const execute=promisify(execFile);
+
+export async function acquireServiceLease(stateDir,ownerPid,{waitMs=10000,pollMs=100}={}){
+  const deadline=Date.now()+waitMs;
+  while(ownerAlive(ownerPid)){
+    const lease=await acquireRuntime(stateDir);if(lease)return lease;
+    // Repeated activation of this same owner is already served. A different
+    // owner must wait for the departing service to finish shutting down.
+    try{
+      const active=JSON.parse(await fs.readFile(path.join(stateDir,'service-status.json'),'utf8'));
+      if(active.ownerPid===ownerPid&&['running','recovering'].includes(active.phase)&&ownerAlive(active.pid))return null;
+    }catch{}
+    if(Date.now()>=deadline)throw Error('旧状态栏服务仍占用单实例锁，接入等待超时');
+    await wait(Math.min(pollMs,deadline-Date.now()));
+  }
+  return null;
+}
 
 async function stopWorker(child,graceful=false){
   if(!child||child.exitCode!==null||child.signalCode!==null)return;
@@ -23,12 +40,12 @@ async function stopWorker(child,graceful=false){
 }
 
 export async function supervise({stateDir,ownerPid,args,workerFile=path.join(here,'daemon.mjs'),heartbeatMs=30000,pollMs=1000,retryMs=1000,maxRetryMs=10000}){
-  const lease=await acquireRuntime(stateDir);if(!lease)return;
+  const lease=await acquireServiceLease(stateDir,ownerPid);if(!lease)return;
   const log=diagnostics(stateDir,'service-error.log');
   let stopping=false,child=null,restarts=0,lastBeat=0,startedAt=0,failures=0,lastPhase='starting';
   const stop=()=>{stopping=true;};
   process.on('SIGINT',stop);process.on('SIGTERM',stop);
-  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.6.2',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
+  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.6.3',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
   try{
     while(!stopping&&ownerAlive(ownerPid)){
       startedAt=lastBeat=Date.now();lastPhase='starting';

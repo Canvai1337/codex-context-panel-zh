@@ -12,7 +12,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn,ms=12000){const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await wait(200);}throw Error('等待验证结果超时');}
 test('daemon end-to-end: local CDP, selected log, switching, renderer replacement',async()=>{
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ctx-bridge-'));let context,daemon,server;
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ctx-bridge-'));let context,daemon,successor,server,firstOwner,nextOwner;
  try{
   const dataHome=path.join(dir,'data');await fs.mkdir(path.join(dataHome,'sessions'),{recursive:true});
   const record=(type,payload)=>JSON.stringify({type,payload,timestamp:'2026-10-30T02:00:00Z'})+'\n';
@@ -29,7 +29,9 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
   let page=context.pages()[0];await page.setContent(fixtureHTML());
   const portFile=path.join(dir,'panel-port');
-  daemon=spawn(process.execPath,[path.resolve(here,'../service.mjs'),'--port-file',portFile,'--owner-pid',String(process.pid)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',CODEX_PANEL_STATE_DIR:path.join(dir,'local','CodexContextPanel'),LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
+  const newOwner=()=>spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+  const launch=owner=>spawn(process.execPath,[path.resolve(here,'../service.mjs'),'--port-file',portFile,'--owner-pid',String(owner.pid)],{env:{...process.env,CODEX_HOME:dataHome,CODEX_PANEL_DISABLE_ACCOUNT:'1',CODEX_PANEL_STATE_DIR:path.join(dir,'local','CodexContextPanel'),LOCALAPPDATA:path.join(dir,'local')},stdio:'pipe',windowsHide:true});
+  firstOwner=newOwner();daemon=launch(firstOwner);
   let stderr='';daemon.stderr.on('data',b=>stderr+=b.toString());
   const pill=()=>page.locator('#boss-context-panel .pill').textContent().catch(()=>null);
   await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8')).phase==='starting';}catch{return false;}});
@@ -47,9 +49,14 @@ test('daemon end-to-end: local CDP, selected log, switching, renderer replacemen
   await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(stateDir,'status.json'),'utf8')).pid!==first.pid&&String(await pill()).includes('33.0%');}catch{return false;}});
   await page.close();page=await context.newPage();await page.setContent(fixtureHTML());
   await until(async()=>String(await pill()).includes('44.0%'));
-  const status=JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8'));assert.equal(status.phase,'connected');
+  // Rapid reopen must hand the lease to the new owner and continue refreshing.
+  nextOwner=newOwner();firstOwner.kill();successor=launch(nextOwner);successor.stderr.resume();
+  await until(async()=>{try{const status=JSON.parse(await fs.readFile(path.join(stateDir,'status.json'),'utf8'));return status.ownerPid===nextOwner.pid&&status.phase==='connected';}catch{return false;}});
+  await fs.appendFile(file,usage(550));await until(async()=>String(await pill()).includes('55.0%'));
+  const status=JSON.parse(await fs.readFile(path.join(dir,'local','CodexContextPanel','status.json'),'utf8'));assert.equal(status.phase,'connected');assert.equal(status.ownerPid,nextOwner.pid);
  }finally{
-  if(daemon){daemon.kill();await new Promise(r=>{if(daemon.exitCode!==null)return r();daemon.once('exit',r);setTimeout(r,3000);});}
+  firstOwner?.kill();nextOwner?.kill();
+  for(const child of [daemon,successor])if(child){await new Promise(r=>{if(child.exitCode!==null)return r();child.once('exit',r);setTimeout(()=>{child.kill();r();},4000);});}
   await context?.close();if(server)await new Promise(r=>server.close(r));await fs.rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:200});
  }
 });

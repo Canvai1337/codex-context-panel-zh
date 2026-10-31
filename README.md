@@ -2,7 +2,7 @@
 
 在 Windows 版 Codex 输入框上方显示上下文用量、已用 Token、5 小时剩余额度，以及本机今日／本周 Token。
 
-**非官方社区小工具，与 OpenAI 无隶属关系。当前版本：1.6.2。**
+**非官方社区小工具，与 OpenAI 无隶属关系。当前版本：1.6.3。**
 
 ![收起状态栏，模拟数据](assets/collapsed.png)
 
@@ -21,6 +21,7 @@
 - 包级启动桥只在点击后短暂运行；状态栏服务与 Codex 进程一同退出，聊天数据只在变化时传输。
 - 监护进程检查后台刷新心跳；后台崩溃或连续 30 秒没有完成刷新时自动重启，避免进程仍在但状态栏不再接入。
 - 商店版端口及诊断文件使用包的显式 `LocalCache` 路径，避免 Codex 和独立后台因 Windows 的 AppData 重定向而读取不同文件。
+- 快速退出后立即重开时，新服务最多等待 10 秒接手旧服务的单实例锁；同一窗口重复启动仍复用已有服务。
 - 剩余额度按红、黄、绿显示；缺失数据和过期数据不会冒充剩余 100%。
 
 ## 安装
@@ -28,7 +29,7 @@
 适用于 **Windows 10/11 x64、Windows Store 版 Codex、Node.js 22+ 和可运行的 Codex CLI**。原生启动桥使用 Windows 自带的 .NET Framework 4.x。当前已在维护者本机的 Store 版 Codex 验证；ARM64、非 Store 安装、macOS、Linux 和终端状态栏不在此模式的支持范围内。
 
 1. 安装 [Node.js](https://nodejs.org/) 和 [Codex CLI](https://learn.chatgpt.com/docs/cli)，确认在 PowerShell 中能运行 `node --version`、`codex --version`，并已登录 Codex。
-2. 在 [Releases](https://github.com/Canvai1337/codex-context-panel-zh/releases) 下载 `codex-context-panel-zh-v1.6.2-windows.zip`，解压到任意文件夹。
+2. 在 [Releases](https://github.com/Canvai1337/codex-context-panel-zh/releases) 下载 `codex-context-panel-zh-v1.6.3-windows.zip`，解压到任意文件夹。
 3. 在解压后的文件夹打开 PowerShell，运行：
 
    ```powershell
@@ -39,7 +40,7 @@
 
 安装器通过 Windows 包级调试接口注册启动桥，不再接管原快捷方式。由 1.5.x 升级时，会将此前接管的链接按备份恢复为原始文件。登录和应用部署事件触发的维护任务只修复注册配置，不启动 Codex，不预读聊天。
 
-安装目录：`%LOCALAPPDATA%\Programs\CodexContextPanel\1.6.2`。不需要管理员权限。安装和运行无需 `npm install`；源码安装会用 Windows 自带的 C# 编译器构建启动桥，发布 ZIP 已包含编译文件。隔离安装检查可使用 `-SkipIntegration`，该选项不注册系统配置，也不操作快捷方式。
+安装目录：`%LOCALAPPDATA%\Programs\CodexContextPanel\1.6.3`。不需要管理员权限。安装和运行无需 `npm install`；源码安装会用 Windows 自带的 C# 编译器构建启动桥，发布 ZIP 已包含编译文件。隔离安装检查可使用 `-SkipIntegration`，该选项不注册系统配置，也不操作快捷方式。
 
 ## 数据说明与隐私
 
@@ -57,7 +58,7 @@
 在 PowerShell 中运行，然后正常重启 Codex：
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\CodexContextPanel\1.6.2\Uninstall.ps1"
+& "$env:LOCALAPPDATA\Programs\CodexContextPanel\1.6.3\Uninstall.ps1"
 ```
 
 如需一并删除面板诊断文件，在命令末尾加 `-RemoveSettings`。卸载只停止本面板及其只读 app-server，不停止 Codex 应用或其他聊天。
@@ -72,7 +73,7 @@
 
 **额度显示“—”或“待刷新”**：检查 Codex CLI 登录和网络状态，等待下一次额度查询。面板不会自行猜测额度。
 
-**面板没有出现**：确认正在查看本机聊天。1.6.2 会自动恢复崩溃或失去心跳的后台；可等待约 30～40 秒。若仍未出现，检查 `%LOCALAPPDATA%\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexContextPanel` 的 `startup-error.log`、`daemon-error.log`、`service-error.log`、`service-status.json` 与 `status.json`。反馈问题时请先删除日志中的个人路径、聊天内容和账户信息。
+**面板没有出现**：确认正在查看本机聊天。1.6.3 会自动恢复崩溃或失去心跳的后台；可等待约 30～40 秒。若仍未出现，检查 `%LOCALAPPDATA%\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexContextPanel` 的 `startup-error.log`、`daemon-error.log`、`service-error.log`、`service-status.json` 与 `status.json`。反馈问题时请先删除日志中的个人路径、聊天内容和账户信息。
 
 ## 开发与验证
 

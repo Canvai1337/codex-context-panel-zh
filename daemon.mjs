@@ -8,7 +8,7 @@ import {LocalUsage} from './usage.mjs';
 import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics,stateDirectory} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const options=runtimeOptions();let port=options.port;
-const VERSION='1.6.2';
+const VERSION='1.6.3';
 const stateDir=stateDirectory();
 const supervised=process.env.CODEX_PANEL_SUPERVISED==='1'&&typeof process.send==='function';
 const lease=supervised?null:await acquireRuntime(stateDir);if(!supervised&&!lease)process.exit(0);
