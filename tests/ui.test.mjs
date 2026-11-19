@@ -27,6 +27,11 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   const closed=await geometry();assert.equal(closed.position,'static');assert.equal(closed.parent,true);assert.equal(closed.panel.x,closed.input.x);assert.equal(closed.panel.w,closed.input.w);assert(closed.panel.bottom<=closed.input.y);
   const out=path.resolve(here,'../outputs');await fs.mkdir(out,{recursive:true});await page.screenshot({path:path.join(out,'内嵌栏-收起预览.png')});
   await toggle.click();assert.equal(await body.isVisible(),true);const texts=await body.textContent();assert(texts.includes('分类估算'));assert(texts.includes('未记录'));assert(texts.includes('139,193'));assert(texts.includes('475,000'));assert(texts.includes('335,807'));
+  for(const name of ['sol','astra']){
+   await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),{...demo,model:`gpt-6.2-${name}`});
+   assert.equal(await body.locator('.model').textContent(),`GPT-6.2 ${name[0].toUpperCase()}${name.slice(1)}`);
+  }
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);
   assert.equal(await body.locator('details,.foot,.meta').count(),0);assert(!texts.includes('数据说明'));assert(!texts.includes('聊天 '+ID.slice(0,8)));assert(!texts.includes('对话结束后更新'));
   assert.equal(await body.locator('.compression-stats .metric-name').allTextContents().then(ns=>ns.join('|')),'自动压缩预留|已压缩次数');
   const fontSizes=await body.locator('.totals .metric-name,.totals .metric-value,.compression-stats .metric-name,.compression-stats .metric-value').evaluateAll(ns=>ns.map(n=>({type:n.className,size:getComputedStyle(n).fontSize})));
@@ -90,5 +95,14 @@ test('cached switching is synchronous; a running turn freezes every visible metr
   await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[],quota:{status:'ready',fiveHour:{usedPercent:99}},activity:{todayTokens:1}}));assert.equal(await panel.textContent(),packetBefore);
   await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[{...d,turnActive:false}],quota:d.quota,activity:d.activity}),demo);assert.equal(await panel.locator('.pill').textContent(),'29.3%');
   await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.dispose());
+  await page.evaluate(d=>{window.__BOSS_CONTEXT_PANEL_SEED__={threads:[{...d,turnActive:true}],quota:{status:'loading'}};},demo);
+  await page.addScriptTag({content:widget});
+  assert.equal(await panel.locator('.quota-pill').textContent(),'—');
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[],quota:d.quota}),demo);
+  assert.equal(await panel.locator('.quota-pill').textContent(),'73.0%');
+  assert.equal(await panel.locator('.quota-number[data-period="weekly"]').textContent(),'53.0%');
+  await page.evaluate(()=>window.__BOSS_CONTEXT_PANEL__.updatePacket({threads:[],quota:{status:'ready',fiveHour:{usedPercent:90},weekly:{usedPercent:95}}}));
+  assert.equal(await panel.locator('.quota-pill').textContent(),'73.0%');
+  assert.equal(await panel.locator('.quota-number[data-period="weekly"]').textContent(),'53.0%');
  }finally{await browser.close();}
 });

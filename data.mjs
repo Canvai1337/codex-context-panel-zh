@@ -37,7 +37,7 @@ export class SessionScanner {
     this.offset=0;this.carry=Buffer.alloc(0);this.base=new Map();this.history=new Map();this.definitions=new Map();
     this.instructions=new Map();this.latest=null;this.snapshot=new Map();this.model=null;this.window=null;
     this.sessionId=null;this.compactions=0;this.parseErrors=0;this.updatedAt=null;this.pendingCompaction=false;
-    this.seenMeta=false;this.identity=null;this.snapshotModel=null;this.pendingModel=false;
+    this.seenMeta=false;this.identity=null;this.pendingModel=false;
     this.turnActive=false;this.committed=null;
   }
   response(p) {
@@ -79,8 +79,11 @@ export class SessionScanner {
       // Metadata capacity is only a fallback; token-count capacity takes priority.
       if(!this.window)this.window=positive(p.context_window);
     } else if(o.type==='turn_context') {
+      if(p.model&&this.model&&p.model!==this.model){
+        this.window=null;
+        if(this.latest)this.pendingModel=true;
+      }
       this.model=p.model||this.model;
-      if(this.latest&&this.snapshotModel&&this.snapshotModel!==this.model)this.pendingModel=true;
       if(p.user_instructions)this.definitions.set('user_instructions',new Map([['memory',length(p.user_instructions)]]));
       if(p.developer_instructions)this.definitions.set('developer_instructions',splitInstructions(p.developer_instructions));
     } else if(o.type==='response_item')this.response(p);
@@ -95,7 +98,7 @@ export class SessionScanner {
         total:positive(u.total_tokens)??u.input_tokens+(positive(u.output_tokens)||0)};
       const w=positive(p.info.model_context_window);if(w)this.window=w;
       this.total=positive(p.info.total_token_usage?.total_tokens);
-      this.updatedAt=o.timestamp||null;this.pendingCompaction=false;this.pendingModel=false;this.snapshotModel=this.model;
+      this.updatedAt=o.timestamp||null;this.pendingCompaction=false;this.pendingModel=false;
       // Freeze attribution at the same event as exact usage, not at a later log tail.
       this.snapshot=sumMaps(this.base,this.history,...this.definitions.values(),...this.instructions.values());
     }

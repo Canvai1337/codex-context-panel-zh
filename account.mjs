@@ -3,6 +3,20 @@ import {createInterface} from 'node:readline';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+export async function resolveAccountCommand(installDirectory,legacyCli,override=process.env.CODEX_PANEL_CLI){
+  if(override)return override;
+  // NativeStartup refreshes this path when the Store package version changes.
+  try{
+    const raw=await fs.readFile(path.join(installDirectory,'bridge-config.json'),'utf8');
+    const {executablePath}=JSON.parse(raw.replace(/^\uFEFF/,''));
+    const bundled=path.join(path.dirname(executablePath),'resources','codex.exe');
+    if((await fs.stat(bundled)).isFile())return bundled;
+  }catch{}
+  if(legacyCli){
+    try{if((await fs.stat(legacyCli)).isFile())return legacyCli;}catch{}
+  }
+  return 'codex';
+}
 const percent=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=100?v:null;
 export function normalizeQuota(response,now=Date.now()){
   const buckets=response?.limits?.rateLimitsByLimitId,legacy=response?.limits?.rateLimits;
@@ -23,7 +37,7 @@ export class AccountClient {
     child.on('error',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     child.on('exit',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     createInterface({input:child.stdout,crlfDelay:Infinity}).on('line',line=>{let msg;try{msg=JSON.parse(line);}catch{return;}const p=this.pending.get(msg.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(msg.id);msg.error?p.reject(Error('额度接口未返回数据')):p.resolve(msg.result);});
-    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.6.3'},capabilities:{optOutNotificationMethods:[]}});
+    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.6.4'},capabilities:{optOutNotificationMethods:[]}});
     child.stdin.write(JSON.stringify({method:'initialized'})+'\n');
   }
   call(method,params){
@@ -34,7 +48,14 @@ export class AccountClient {
     // Metadata only: a changed login file invalidates this read-only connection.
     let revision=null;try{const s=await fs.stat(path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'auth.json'));revision=s.mtimeMs+':'+s.size;}catch{}
     if(this.revision!==undefined&&this.revision!==revision)this.close();this.revision=revision;
-    await this.open();const limits=await this.call('account/rateLimits/read');return {limits};
+    try{
+      await this.open();
+      const limits=await this.call('account/rateLimits/read');
+      return {limits};
+    }catch(error){
+      this.close();
+      throw error;
+    }
   }
   close(){this.rejectAll();this.child?.stdin.end();this.child?.kill();this.child=null;}
 }

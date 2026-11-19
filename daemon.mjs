@@ -3,12 +3,12 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SessionStore} from './data.mjs';
 import {CDP,targets} from './cdp.mjs';
-import {AccountClient,normalizeQuota} from './account.mjs';
+import {AccountClient,normalizeQuota,resolveAccountCommand} from './account.mjs';
 import {LocalUsage} from './usage.mjs';
 import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics,stateDirectory} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const options=runtimeOptions();let port=options.port;
-const VERSION='1.6.3';
+const VERSION='1.6.4';
 const stateDir=stateDirectory();
 const supervised=process.env.CODEX_PANEL_SUPERVISED==='1'&&typeof process.send==='function';
 const lease=supervised?null:await acquireRuntime(stateDir);if(!supervised&&!lease)process.exit(0);
@@ -18,12 +18,25 @@ heartbeat('starting');
 const widget=await fs.readFile(path.join(here,'widget.js'),'utf8');
 const store=new SessionStore();const connections=new Map();
 let config={};try{config=JSON.parse((await fs.readFile(path.join(here,'install-config.json'),'utf8')).replace(/^\uFEFF/,''));}catch{}
-const account=process.env.CODEX_PANEL_DISABLE_ACCOUNT==='1'?null:new AccountClient(process.env.CODEX_PANEL_CLI||config.cliPath||'codex');
+let account=null;
+async function readQuota(){
+  if(process.env.CODEX_PANEL_DISABLE_ACCOUNT==='1'||stopping)return null;
+  const command=await resolveAccountCommand(here,config.cliPath);
+  if(stopping)return null;
+  if(account?.command!==command){
+    account?.close();
+    account=new AccountClient(command);
+  }
+  return account.read();
+}
 const usage=new LocalUsage();let quota={status:'loading',fiveHour:null,weekly:null,fetchedAt:null},quotaAt=0,usageAt=0,quotaPending=false,usagePending=false;
 function refreshGlobal(){
   const now=Date.now(),expired=[quota.fiveHour,quota.weekly].some(w=>w?.resetsAt&&w.resetsAt*1000<=now);
   if(!quotaPending&&(!quotaAt||now-quotaAt>=60000||(expired&&now-quotaAt>=10000))){quotaPending=true;quotaAt=now;
-    (account?account.read():Promise.resolve(null)).then(r=>{quota=normalizeQuota(r);}).catch(()=>{quota={status:'unavailable',fiveHour:null,weekly:null,fetchedAt:Date.now()};}).finally(()=>{quotaPending=false;});
+    readQuota().then(r=>{quota=normalizeQuota(r);}).catch(async error=>{
+      quota=normalizeQuota(null);
+      if(!stopping)await log('account-quota',error);
+    }).finally(()=>{quotaPending=false;});
   }
   if(!usagePending&&(!usageAt||now-usageAt>=10000)){usagePending=true;usageAt=now;usage.refresh().catch(()=>{usage.view={...usage.view,status:'unavailable',todayTokens:null,weekTokens:null};}).finally(()=>{usagePending=false;});}
 }

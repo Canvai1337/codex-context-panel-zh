@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {normalizeQuota,AccountClient} from '../account.mjs';
+import {normalizeQuota,AccountClient,resolveAccountCommand} from '../account.mjs';
 import {UsageFile,LocalUsage,summarizeUsage,periodKeys} from '../usage.mjs';
 const id='a-thread';
 const u=(input=90,output=10)=>({input_tokens:input,output_tokens:output,cached_input_tokens:80,reasoning_output_tokens:5,total_tokens:input+output});
@@ -19,6 +19,24 @@ test('quota normalization uses Codex bucket and duration; missing is unknown, ze
 });
 test('read-only account client denies reset and turn actions',async()=>{
  const c=new AccountClient('unused');await assert.rejects(c.call('account/rateLimitResetCredit/consume',{}));await assert.rejects(c.call('turn/start',{}));
+});
+test('quota executable follows the repaired Store bridge config after an update',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ctx-account-'));
+ try{
+  const missing=path.join(dir,'removed-cli.exe');
+  const bridge=path.join(dir,'bridge-config.json');
+  for(const version of ['old-package','new-package']){
+   const app=path.join(dir,version,'app');
+   const cli=path.join(app,'resources','codex.exe');
+   await fs.mkdir(path.dirname(cli),{recursive:true});
+   await fs.writeFile(cli,'');
+   await fs.writeFile(bridge,'\uFEFF'+JSON.stringify({executablePath:path.join(app,'ChatGPT.exe')}));
+   assert.equal(await resolveAccountCommand(dir,missing,''),cli);
+   await fs.unlink(cli);
+  }
+  assert.equal(await resolveAccountCommand(dir,missing,''),'codex');
+  assert.equal(await resolveAccountCommand(dir,missing,'custom-cli'),'custom-cli');
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 test('today and week boundaries use Los Angeles including DST, not host timezone',()=>{
  assert.deepEqual(periodKeys(Date.parse('2026-10-30T06:59:00Z')),{today:'2026-10-29',weekStart:'2026-10-26'});

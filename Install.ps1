@@ -1,8 +1,7 @@
 ﻿[CmdletBinding()]
-param([string]$InstallRoot=(Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel\1.6.3'),[Alias('SkipShortcut')][switch]$SkipIntegration)
+param([string]$InstallRoot=(Join-Path $env:LOCALAPPDATA 'Programs\CodexContextPanel\1.6.4'),[Alias('SkipShortcut')][switch]$SkipIntegration)
 $ErrorActionPreference='Stop'
 $nodePath=(Get-Command node -ErrorAction Stop).Source
-$cliPath=(Get-Command codex -ErrorAction Stop).Source
 $nodeMajor=[int]((& $nodePath --version).TrimStart('v').Split('.')[0])
 if($nodeMajor -lt 22){throw '需要 Node.js 22 或更新版本'}
 $running=Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'"|Where-Object {$_.CommandLine -notmatch '--type='}|Select-Object -First 1
@@ -13,7 +12,7 @@ foreach($file in $files){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) 
 $bridge=Join-Path $PSScriptRoot 'StartupBridge.exe'
 if(-not (Test-Path -LiteralPath $bridge)){$bridge=& (Join-Path $PSScriptRoot '.code\Build-Native.ps1')}
 Copy-Item -LiteralPath $bridge -Destination (Join-Path $InstallRoot 'StartupBridge.exe') -Force
-@{version='1.6.3';startupMode='native';nodePath=$nodePath;cliPath=$cliPath;desktopPath=$desktopPath}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $InstallRoot 'install-config.json') -Encoding utf8
+@{version='1.6.4';startupMode='native';nodePath=$nodePath;desktopPath=$desktopPath}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $InstallRoot 'install-config.json') -Encoding utf8
 if(-not $SkipIntegration){
   . (Join-Path $InstallRoot 'NativeStartup.ps1')
   Enable-PanelNativeStartup $InstallRoot

@@ -65,6 +65,23 @@ test('background warmup loads unselected sessions and discovers a newly created 
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 test('a model change waits for the new model usage instead of reusing old capacity',()=>{
- const s=new SessionScanner('unused');s.ingest({type:'session_meta',payload:{id:ID}});s.ingest({type:'turn_context',payload:{model:'model-a'}});s.ingest(JSON.parse(usage()));assert.equal(s.report(ID).used,100);
- s.ingest({type:'turn_context',payload:{model:'model-b'}});assert.equal(s.report(ID).used,null);assert.equal(s.report(ID).status,'waiting');s.ingest(JSON.parse(usage(200)));assert.equal(s.report(ID).used,200);
+ const scanner=new SessionScanner('unused');
+ const model=name=>scanner.ingest({type:'turn_context',payload:{model:name}});
+ const tokens=(used,window)=>{
+  const event=JSON.parse(usage(used));
+  event.payload.info.model_context_window=window;
+  scanner.ingest(event);
+ };
+ scanner.ingest({type:'session_meta',payload:{id:ID}});
+ model('gpt-6.2-sol');tokens(82840,828400);
+ assert.equal(scanner.report(ID).percent,10);
+ model('gpt-6.2-astra');
+ assert.equal(scanner.report(ID).used,null);
+ assert.equal(scanner.report(ID).window,null);
+ tokens(200);
+ assert.equal(scanner.report(ID).used,200);
+ assert.equal(scanner.report(ID).percent,null);
+ tokens(23000,230000);
+ assert.equal(scanner.report(ID).percent,10);
+ assert.equal(scanner.report(ID).remaining,207000);
 });

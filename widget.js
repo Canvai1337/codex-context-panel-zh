@@ -1,5 +1,6 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.6.3',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.6.4',STORE='boss-context-panel-ui-v2';
+  const modelNames=new Map([['gpt-6.2-sol','GPT-6.2 Sol'],['gpt-6.2-astra','GPT-6.2 Astra']]);
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();
   const UUID=/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i;
@@ -43,7 +44,22 @@
     const globalChanged='quota'in packet||'activity'in packet;
     if('quota'in packet)packetGlobals.quota=packet.quota;if('activity'in packet)packetGlobals.activity=packet.activity;
     const updated=new Set();for(const data of packet.threads||[]){updated.add(data.threadId);remember({...data,...packetGlobals});}
-    if(globalChanged)for(const data of [...cache.values()])if(!updated.has(data.threadId)&&!frozen.has(data.threadId))remember({...data,...packetGlobals});
+    if(!globalChanged)return;
+    for(const data of cache.values()){
+      if(!frozen.has(data.threadId))continue;
+      // A background restart may seed a running turn before its first quota read.
+      // Fill missing windows once without replacing the turn's displayed values.
+      const incoming=packetGlobals.quota;
+      if(incoming?.status!=='ready')continue;
+      const previous=data.quota;
+      const missingFive=quotaPercent(previous?.fiveHour)===null&&quotaPercent(incoming.fiveHour)!==null;
+      const missingWeek=quotaPercent(previous?.weekly)===null&&quotaPercent(incoming.weekly)!==null;
+      if(missingFive||missingWeek){
+        const quota={...incoming,fiveHour:missingFive?incoming.fiveHour:previous?.fiveHour,weekly:missingWeek?incoming.weekly:previous?.weekly};
+        cache.set(data.threadId,{...data,quota});
+      }
+    }
+    for(const data of [...cache.values()])if(!updated.has(data.threadId)&&!frozen.has(data.threadId))remember({...data,...packetGlobals});
   }
   const seed=window.__BOSS_CONTEXT_PANEL_SEED__;if(Array.isArray(seed)){for(const data of seed)remember(data);}else if(seed)ingestPacket(seed);
   delete window.__BOSS_CONTEXT_PANEL_SEED__;
@@ -116,7 +132,7 @@
     el('.toggle').title=`上下文已用 ${pc(d.percent)} · 当前窗口已用 ${exact(d.used)} Token · 5小时额度剩余 ${quotaRemaining(d.quota?.fiveHour)}`;
     if(d.status!=='ready'){body.append(node('div','status',statuses[d.status]||'等待本聊天数据'));globalDetails(body,d);}
     else{
-      const heading=node('div','titleline');heading.append(node('h2','','使用详情'),node('span','model',d.model||'模型未记录'));body.append(heading);
+      const heading=node('div','titleline');heading.append(node('h2','','使用详情'),node('span','model',(modelNames.get(d.model)??d.model)||'模型未记录'));body.append(heading);
       globalDetails(body,d,true);
       const bar=node('div','bar');bar.setAttribute('role','img');bar.setAttribute('aria-label','上下文占比 '+pc(d.percent));
       if(d.window)for(const r of d.rows||[]){if(!r.tokens)continue;const seg=node('i');seg.style.background=r.color;seg.style.width=Math.max(0,Math.min(100,r.tokens/d.window*100))+'%';bar.append(seg);}body.append(bar);
