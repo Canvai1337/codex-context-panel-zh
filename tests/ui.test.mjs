@@ -33,7 +33,17 @@ test('inline bar: exact totals, native layout, dark/light, narrow widths, select
   }
   await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);
   assert.equal(await body.locator('details,.foot,.meta').count(),0);assert(!texts.includes('数据说明'));assert(!texts.includes('聊天 '+ID.slice(0,8)));assert(!texts.includes('对话结束后更新'));
-  assert.equal(await body.locator('.compression-stats .metric-name').allTextContents().then(ns=>ns.join('|')),'自动压缩预留|已压缩次数');
+  assert.equal(await body.locator('.compression-stats .metric-name').allTextContents().then(ns=>ns.join('|')),'自动压缩参考线|已压缩次数');
+  const pill=panel.locator('.pill');
+  assert.equal(await pill.getAttribute('data-context-tone'),'');
+  for(const [used,tone] of [[749,'green'],[750,'yellow'],[899,'yellow'],[900,'red']]){
+   const data={...demo,used,percent:used/20,compaction:{threshold:1000,remaining:1000-used}};
+   await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),data);
+   assert.equal(await pill.getAttribute('data-context-tone'),tone);
+   assert((await body.textContent()).includes(`距参考线约 ${1000-used} Token`));
+   assert.equal((await body.textContent()).includes('可以先让 AI 总结'),tone==='red');
+  }
+  await page.evaluate(d=>window.__BOSS_CONTEXT_PANEL__.update(d),demo);
   const fontSizes=await body.locator('.totals .metric-name,.totals .metric-value,.compression-stats .metric-name,.compression-stats .metric-value').evaluateAll(ns=>ns.map(n=>({type:n.className,size:getComputedStyle(n).fontSize})));
   assert(fontSizes.filter(n=>n.type==='metric-name').every(n=>n.size==='12px'));assert(fontSizes.filter(n=>n.type==='metric-value').every(n=>n.size==='18px'));
   const left=await panel.locator('.usage-main').boundingBox(),right=await panel.locator('.quota-details').boundingBox();assert(right.x>=left.x+left.width);assert(Math.abs(right.y-left.y)<2);

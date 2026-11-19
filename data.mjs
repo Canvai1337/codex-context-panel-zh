@@ -38,7 +38,7 @@ export class SessionScanner {
     this.instructions=new Map();this.latest=null;this.snapshot=new Map();this.model=null;this.window=null;
     this.sessionId=null;this.compactions=0;this.parseErrors=0;this.updatedAt=null;this.pendingCompaction=false;
     this.seenMeta=false;this.identity=null;this.pendingModel=false;
-    this.turnActive=false;this.committed=null;
+    this.turnActive=false;this.committed=null;this.cwd=null;
   }
   response(p) {
     if(p.type==='message') {
@@ -75,10 +75,12 @@ export class SessionScanner {
     }
     if(o.type==='session_meta') {
       this.sessionId=String(p.id||p.session_id||'').toLowerCase();this.seenMeta=true;
+      this.cwd=typeof p.cwd==='string'&&path.isAbsolute(p.cwd)?p.cwd:null;
       this.base=splitInstructions(p.base_instructions?.text||'');
       // Metadata capacity is only a fallback; token-count capacity takes priority.
       if(!this.window)this.window=positive(p.context_window);
     } else if(o.type==='turn_context') {
+      if(typeof p.cwd==='string'&&path.isAbsolute(p.cwd))this.cwd=p.cwd;
       if(p.model&&this.model&&p.model!==this.model){
         this.window=null;
         if(this.latest)this.pendingModel=true;
@@ -147,11 +149,11 @@ export class SessionScanner {
       const order=rows.map((r,i)=>({i,frac:raw[i]-Math.floor(raw[i])})).filter(v=>rows[v.i].observable).sort((a,b)=>b.frac-a.frac);
       for(let i=0;i<missing;i++)rows[order[i%order.length].i].tokens++;
     }
-    return {status:this.pendingCompaction?'compacting':known?'ready':'waiting',threadId:expectedId,model:this.model,
+    return {status:this.pendingCompaction?'compacting':known?'ready':'waiting',threadId:expectedId,model:this.model,cwd:this.cwd,
       used,window,percent:known&&window?100*used/window:null,remaining:known&&window?Math.max(0,window-used):null,
       input:known?this.latest.input:null,output:known?this.latest.output:null,cached:known?this.latest.cached:null,
       sessionTotal:this.total??null,updatedAt:this.updatedAt,compactions:this.compactions,rows,parseErrors:this.parseErrors,
-      attribution:'observable_bytes',reserve:null};
+      attribution:'observable_bytes'};
   }
 }
 

@@ -45,7 +45,7 @@ export async function supervise({stateDir,ownerPid,args,workerFile=path.join(her
   let stopping=false,child=null,restarts=0,lastBeat=0,startedAt=0,failures=0,lastPhase='starting';
   const stop=()=>{stopping=true;};
   process.on('SIGINT',stop);process.on('SIGTERM',stop);
-  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.6.4',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
+  const state=phase=>writeState(path.join(stateDir,'service-status.json'),{version:'1.7.0',pid:process.pid,ownerPid,workerPid:child?.pid||null,restarts,phase,workerPhase:lastPhase,updatedAt:new Date().toISOString()});
   try{
     while(!stopping&&ownerAlive(ownerPid)){
       startedAt=lastBeat=Date.now();lastPhase='starting';

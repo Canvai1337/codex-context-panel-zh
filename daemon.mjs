@@ -2,13 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SessionStore} from './data.mjs';
+import {CompactionReader} from './compaction.mjs';
 import {CDP,targets} from './cdp.mjs';
 import {AccountClient,normalizeQuota,resolveAccountCommand} from './account.mjs';
 import {LocalUsage} from './usage.mjs';
 import {runtimeOptions,ownerAlive,portFromFile,acquireRuntime,writeState,diagnostics,stateDirectory} from './runtime.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const options=runtimeOptions();let port=options.port;
-const VERSION='1.6.4';
+const VERSION='1.7.0';
 const stateDir=stateDirectory();
 const supervised=process.env.CODEX_PANEL_SUPERVISED==='1'&&typeof process.send==='function';
 const lease=supervised?null:await acquireRuntime(stateDir);if(!supervised&&!lease)process.exit(0);
@@ -19,7 +20,7 @@ const widget=await fs.readFile(path.join(here,'widget.js'),'utf8');
 const store=new SessionStore();const connections=new Map();
 let config={};try{config=JSON.parse((await fs.readFile(path.join(here,'install-config.json'),'utf8')).replace(/^\uFEFF/,''));}catch{}
 let account=null;
-async function readQuota(){
+async function getAccount(){
   if(process.env.CODEX_PANEL_DISABLE_ACCOUNT==='1'||stopping)return null;
   const command=await resolveAccountCommand(here,config.cliPath);
   if(stopping)return null;
@@ -27,13 +28,14 @@ async function readQuota(){
     account?.close();
     account=new AccountClient(command);
   }
-  return account.read();
+  return account;
 }
+const compaction=new CompactionReader(store.home,async cwd=>(await getAccount())?.readConfig(cwd));
 const usage=new LocalUsage();let quota={status:'loading',fiveHour:null,weekly:null,fetchedAt:null},quotaAt=0,usageAt=0,quotaPending=false,usagePending=false;
 function refreshGlobal(){
   const now=Date.now(),expired=[quota.fiveHour,quota.weekly].some(w=>w?.resetsAt&&w.resetsAt*1000<=now);
   if(!quotaPending&&(!quotaAt||now-quotaAt>=60000||(expired&&now-quotaAt>=10000))){quotaPending=true;quotaAt=now;
-    readQuota().then(r=>{quota=normalizeQuota(r);}).catch(async error=>{
+    getAccount().then(client=>client?.read()).then(r=>{quota=normalizeQuota(r);}).catch(async error=>{
       quota=normalizeQuota(null);
       if(!stopping)await log('account-quota',error);
     }).finally(()=>{quotaPending=false;});
@@ -66,12 +68,14 @@ async function tick(){
       if(!c){c=await new CDP(target).open();connections.set(target.id,c);}
       let panel=await c.evaluate('({version:window.__BOSS_CONTEXT_PANEL__?.version,id:window.__BOSS_CONTEXT_PANEL__?.select()||null})');
       if(panel.version!==VERSION){
-        const seed={threads:[...store.reports.values()],quota,activity:usage.view};
+        const seed={threads:[...store.reports.values()].map(d=>compaction.decorate(d)),quota,activity:usage.view};
         await c.evaluate(`window.__BOSS_CONTEXT_PANEL_SEED__=${JSON.stringify(seed)};\n${widget}`);
         panel=await c.evaluate('({id:window.__BOSS_CONTEXT_PANEL__?.select()||null})');c.panelReports=new Map();c.panelGlobals=null;
       }
       const data=await store.get(panel.id);
-      const reports=[...[...store.reports.values()].filter(d=>d.threadId!==panel.id),data].filter(d=>d.threadId);
+      compaction.refresh(data);
+      const reports=[...[...store.reports.values()].filter(d=>d.threadId!==panel.id),data]
+        .filter(d=>d.threadId).map(d=>compaction.decorate(d));
       c.panelReports??=new Map();const changed=[];
       const liveReports=new Set(reports.map(d=>d.threadId));for(const id of c.panelReports.keys())if(!liveReports.has(id))c.panelReports.delete(id);
       for(const report of reports){const key=JSON.stringify(report);if(c.panelReports.get(report.threadId)!==key){changed.push(report);c.panelReports.set(report.threadId,key);}}

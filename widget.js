@@ -1,5 +1,5 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.6.4',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.7.0',STORE='boss-context-panel-ui-v2';
   const modelNames=new Map([['gpt-6.2-sol','GPT-6.2 Sol'],['gpt-6.2-astra','GPT-6.2 Astra']]);
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();
@@ -22,6 +22,7 @@
   .metric{background:transparent;border:0;border-radius:0;padding:2px 0;min-width:0}.metric-name{font-size:12px;color:var(--muted);margin-bottom:7px}.metric-value{font-size:18px;font-weight:600;letter-spacing:0;line-height:1.4;font-variant-numeric:tabular-nums;white-space:nowrap;user-select:text}.unit{display:block;font-size:11px;font-weight:400;color:var(--faint);margin-top:1px}
   .quota-details{display:flex;flex-direction:column;justify-content:space-between;gap:20px;border-left:1px solid var(--line);padding-left:18px;min-width:0}.quota-detail{background:transparent;border:0;border-radius:0;min-width:0}.quota-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.quota-label{font-size:12px;color:var(--muted);white-space:nowrap}.quota-number{font-size:22px;font-weight:600;line-height:1.3;font-variant-numeric:tabular-nums;white-space:nowrap}.quota-reset{font-size:12px;line-height:1.65;color:var(--muted);margin-top:7px;overflow-wrap:anywhere}
   [data-tone="low"]{color:var(--quota-red)}[data-tone="medium"]{color:var(--quota-yellow)}[data-tone="high"]{color:var(--quota-green)}[data-tone="unknown"]{color:var(--muted)}
+  .pill[data-context-tone="green"]{color:var(--quota-green)}.pill[data-context-tone="yellow"]{color:var(--quota-yellow)}.pill[data-context-tone="red"]{color:var(--quota-red)}
   .scope-note{font-size:11px;line-height:1.65;color:var(--faint);margin-top:15px}.bar{height:5px;display:flex;border-radius:5px;overflow:hidden;background:var(--track);margin:15px 0 16px}.bar i{display:block;height:100%;min-width:0}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:12px;color:var(--muted)}.estimate{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--faint)}
   .rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px}.row{display:grid;grid-template-columns:7px minmax(0,1fr) 62px 46px;gap:8px;align-items:center;min-height:33px;font-size:13px;font-variant-numeric:tabular-nums}.dot{width:7px;height:7px;border-radius:2px;opacity:.9}.row-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.num,.pct{text-align:right;white-space:nowrap}.pct{color:var(--muted);font-size:12px}.unknown{color:var(--faint);grid-column:3/5;text-align:right;font-size:12px}
   .compression-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;border-top:1px solid var(--line);margin-top:16px;padding-top:16px}.status{font-size:13px;color:var(--muted);padding:2px 0 10px}.offline{color:var(--quota-yellow)}.stamp{margin-top:9px;font-size:11px;color:var(--faint)}
@@ -34,7 +35,15 @@
   function remember(data){
     if(!data?.threadId)return;
     const id=data.threadId,previous=cache.get(id);
-    if(data.turnActive){frozen.add(id);if(previous)return;}
+    if(data.turnActive){
+      frozen.add(id);
+      if(previous){
+        if(!previous.compaction&&data.compaction&&previous.model===data.model&&previous.window===data.window&&previous.used===data.used){
+          cache.set(id,{...previous,compaction:data.compaction});
+        }
+        return;
+      }
+    }
     else frozen.delete(id);
     if(previous?.status==='ready'&&['read_error','not_found','waiting','compacting'].includes(data.status))return;
     cache.delete(id);cache.set(id,data);if(cache.size>256)cache.delete(cache.keys().next().value);
@@ -119,17 +128,23 @@
     top.append(main,quotas);body.append(top,node('div','scope-note','额度为账户共享；Token 为本机已记录聊天，按太平洋时间统计，本周从周一 00:00 开始。'+(activity.partial?'部分日志无法读取，累计值可能不完整。':'')));
   }
   const statuses={waiting:'等待本聊天的首次用量记录',compacting:'上下文已压缩，等待新的用量记录',not_found:'未找到本聊天的本机日志',read_error:'暂时无法读取本聊天日志',identity_mismatch:'聊天标识不匹配，已停止显示'};
+  function compactionTone(d){
+    if(!d.compaction||d.used==null)return '';
+    const progress=d.used/d.compaction.threshold;
+    return progress>=0.9?'red':progress>=0.75?'yellow':'green';
+  }
   function render(data){
     if(destroyed)return;if(data)remember(data);const id=mount();if(id!==current){current=id;last=cache.get(id)||null;renderKey=null;}if(!id)return;
     last=cache.get(id)||last;
     if(data?.threadId===id){lastPing=Date.now();if(offline){offline=false;renderKey=null;}}
     const d=last||{status:'waiting',threadId:id},key=JSON.stringify(d);if(key===renderKey){theme();return;}renderKey=key;
     const body=el('.body'),scroll=body.scrollTop;body.replaceChildren();
-    const accent=d.percent>=85?'var(--color-text-danger-surface,#fa423e)':d.percent>=70?'var(--color-text-warning-surface,#fb6a22)':null;
-    if(accent)host.style.setProperty('--accent',accent);else host.style.removeProperty('--accent');
-    el('.pill').textContent=d.percent==null?(d.status==='ready'?'容量未知':'暂无记录'):pc(d.percent);
+    const tone=compactionTone(d),pill=el('.pill');
+    pill.dataset.contextTone=tone;
+    pill.textContent=d.percent==null?(d.status==='ready'?'容量未知':'暂无记录'):pc(d.percent);
     globalSummary(d);
     el('.toggle').title=`上下文已用 ${pc(d.percent)} · 当前窗口已用 ${exact(d.used)} Token · 5小时额度剩余 ${quotaRemaining(d.quota?.fiveHour)}`;
+    if(d.compaction?.remaining!=null)el('.toggle').title+=` · 距自动压缩参考线约 ${exact(d.compaction.remaining)} Token${tone==='red'?'，建议先让 AI 总结':''}`;
     if(d.status!=='ready'){body.append(node('div','status',statuses[d.status]||'等待本聊天数据'));globalDetails(body,d);}
     else{
       const heading=node('div','titleline');heading.append(node('h2','','使用详情'),node('span','model',(modelNames.get(d.model)??d.model)||'模型未记录'));body.append(heading);
@@ -139,8 +154,11 @@
       const caption=node('div','section-title');caption.append(node('span','','占用构成'),node('span','estimate','分类估算'));body.append(caption);
       const rows=node('div','rows');for(const r of d.rows||[])rows.append(row(r,d.window));body.append(rows);
       const compression=node('div','compression-stats');compression.setAttribute('aria-label','上下文压缩');
-      const reserve=metric('自动压缩预留',d.reserve??'未知');reserve.title='自动压缩预留未由日志提供时显示未知，剩余容量不代表距离压缩的精确余量。';
-      compression.append(reserve,metric('已压缩次数',d.compactions??0,'次'));body.append(compression);
+      const limit=metric('自动压缩参考线',d.compaction?.threshold??'未知');
+      limit.title='根据模型目录和当前配置估算，实际触发还取决于后续请求和 Codex 内部的 Token 统计。';
+      if(d.compaction?.remaining!=null)limit.append(node('div','stamp',`距参考线约 ${exact(d.compaction.remaining)} Token`));
+      compression.append(limit,metric('已压缩次数',d.compactions??0,'次'));body.append(compression);
+      if(tone==='red')body.append(node('div','status offline','接近自动压缩参考线。想保留细节，可以先让 AI 总结。'));
     }
     if(d.parseErrors)body.append(node('div','stamp','有 '+d.parseErrors+' 条日志无法解析，分类可能不完整'));
     body.scrollTop=scroll;theme();expansion();

@@ -8,7 +8,7 @@ $version=(Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Raw -En
 $name="codex-context-panel-zh-v$version-windows"
 $staging=Join-Path $OutputRoot ($name+'-staging-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $staging|Out-Null
-$files=@('data.mjs','account.mjs','usage.mjs','widget.js','cdp.mjs','daemon.mjs','service.mjs','runtime.mjs','Install.ps1','Start.ps1','Launch.vbs','Shortcuts.ps1','NativeStartup.ps1','Recover-NativeStartup.ps1','Uninstall.ps1','README.md','CHANGELOG.md','使用说明.md','THIRD-PARTY-NOTICES.txt','LICENSE')
+$files=@('data.mjs','compaction.mjs','account.mjs','usage.mjs','widget.js','cdp.mjs','daemon.mjs','service.mjs','runtime.mjs','Install.ps1','Start.ps1','Launch.vbs','Shortcuts.ps1','NativeStartup.ps1','Recover-NativeStartup.ps1','Uninstall.ps1','README.md','CHANGELOG.md','使用说明.md','THIRD-PARTY-NOTICES.txt','LICENSE')
 foreach($file in $files){Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $staging $file) -Force}
 Copy-Item -LiteralPath (Join-Path $repoRoot 'assets') -Destination $staging -Recurse -Force
 & (Join-Path $PSScriptRoot 'Build-Native.ps1') -OutputRoot $staging|Out-Null

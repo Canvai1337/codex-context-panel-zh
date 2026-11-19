@@ -31,17 +31,22 @@ export class AccountClient {
   constructor(command){this.command=command;this.child=null;this.pending=new Map();this.seq=0;}
   rejectAll(){for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('额度服务已断开'));}this.pending.clear();}
   async open(){
+    if(this.opening)return this.opening;
     if(this.child&&this.child.exitCode===null)return;
+    this.opening=this.start();
+    try{await this.opening;}catch(error){this.close();throw error;}finally{this.opening=null;}
+  }
+  async start(){
     const child=spawn(this.command,['app-server','--listen','stdio://'],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});this.child=child;
     child.stderr.resume();child.stdin.on('error',()=>{if(this.child===child)this.rejectAll();});
     child.on('error',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     child.on('exit',()=>{if(this.child===child){this.rejectAll();this.child=null;}});
     createInterface({input:child.stdout,crlfDelay:Infinity}).on('line',line=>{let msg;try{msg=JSON.parse(line);}catch{return;}const p=this.pending.get(msg.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(msg.id);msg.error?p.reject(Error('额度接口未返回数据')):p.resolve(msg.result);});
-    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.6.4'},capabilities:{optOutNotificationMethods:[]}});
+    await this.call('initialize',{clientInfo:{name:'codex-context-panel',title:'Codex 中文上下文面板',version:'1.7.0'},capabilities:{optOutNotificationMethods:[]}});
     child.stdin.write(JSON.stringify({method:'initialized'})+'\n');
   }
   call(method,params){
-    if(!['initialize','account/rateLimits/read','account/usage/read'].includes(method))return Promise.reject(Error('未允许的操作'));
+    if(!['initialize','account/rateLimits/read','account/usage/read','config/read'].includes(method))return Promise.reject(Error('未允许的操作'));
     return new Promise((resolve,reject)=>{if(!this.child?.stdin?.writable)return reject(Error('额度服务未连接'));const id=++this.seq;const timer=setTimeout(()=>{this.pending.delete(id);reject(Error('额度查询超时'));},12000);this.pending.set(id,{resolve,reject,timer});this.child.stdin.write(JSON.stringify({id,method,...params===undefined?{}:{params}})+'\n');});
   }
   async read(){
@@ -56,6 +61,11 @@ export class AccountClient {
       this.close();
       throw error;
     }
+  }
+  async readConfig(cwd){
+    await this.open();
+    const {config}=await this.call('config/read',{cwd,includeLayers:false});
+    return config;
   }
   close(){this.rejectAll();this.child?.stdin.end();this.child?.kill();this.child=null;}
 }
