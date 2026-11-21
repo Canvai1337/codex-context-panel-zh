@@ -1,5 +1,5 @@
 (() => {
-  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.7.0',STORE='boss-context-panel-ui-v2';
+  const KEY='__BOSS_CONTEXT_PANEL__',ID='boss-context-panel',VERSION='1.7.1',STORE='boss-context-panel-ui-v2';
   const modelNames=new Map([['gpt-6.2-sol','GPT-6.2 Sol'],['gpt-6.2-astra','GPT-6.2 Astra']]);
   if(window[KEY]?.version===VERSION)return;
   window[KEY]?.dispose();

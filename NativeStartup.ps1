@@ -34,7 +34,9 @@ function Set-PanelMaintenance([string]$Root){
   $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
   $user=$identity.User.Value
   $arguments='-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+(Join-Path $Root 'NativeStartup.ps1')+'" -Action Repair -InstallRoot "'+$Root+'" -SkipMaintenance'
-  $subscription='<QueryList><Query Id="0" Path="Microsoft-Windows-AppXDeploymentServer/Operational"><Select Path="Microsoft-Windows-AppXDeploymentServer/Operational">*[System[(EventID=400 or EventID=613)]]</Select></Query></QueryList>'
+  # Wait for package registration to succeed, rather than responding to staging
+  # or removal. The launcher independently repairs before a requested launch.
+  $subscription='<QueryList><Query Id="0" Path="Microsoft-Windows-AppXDeploymentServer/Operational"><Select Path="Microsoft-Windows-AppXDeploymentServer/Operational">*[System[EventID=400] and EventData[Data[@Name="DeploymentOperation"]="6"]]</Select></Query></QueryList>'
   $query=[Security.SecurityElement]::Escape($subscription)
   $command=[Security.SecurityElement]::Escape((Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'))
   $argumentXml=[Security.SecurityElement]::Escape($arguments)
@@ -44,7 +46,7 @@ function Set-PanelMaintenance([string]$Root){
   <RegistrationInfo><Description>Repair Codex panel startup registration only; never launch Codex.</Description></RegistrationInfo>
   <Triggers>
     <LogonTrigger><Enabled>true</Enabled><UserId>$user</UserId><Delay>PT5S</Delay></LogonTrigger>
-    <EventTrigger><Enabled>true</Enabled><Subscription>$query</Subscription><Delay>PT10S</Delay></EventTrigger>
+    <EventTrigger><Enabled>true</Enabled><Subscription>$query</Subscription></EventTrigger>
   </Triggers>
   <Principals><Principal id="Owner"><UserId>$user</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><StartWhenAvailable>true</StartWhenAvailable><ExecutionTimeLimit>PT30S</ExecutionTimeLimit></Settings>
